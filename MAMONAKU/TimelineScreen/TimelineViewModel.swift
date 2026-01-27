@@ -4,94 +4,154 @@ import Combine
 import ActivityKit
 
 @MainActor
-final class TimelineViewModel: ObservableObject {
-    private var activity: Activity<MAMONAKULiveActivityAttributes>?
+class TimelineViewModel: ObservableObject {
+    private let repository: TimelineRepositoryProtocol
     
     let hourHeight: CGFloat = 80
     let timeColumnWidth: CGFloat = 52
     let timelinePadding: CGFloat = 28
     let minuteStep: Int = 15
 
-    @Published var items: [ScheduleItem] = []
-    @Published var dropPreview: DropPreview?
-    @Published var previewDuration: Int?
-    @Published var dragDuration: Int?
-    @Published var movePreview: DropPreview?
+    @Published var items: [TimelineItem] = []
+    @Published var dropPreview: TimelineItem?
+    @Published var previewItemID: UUID?
+    @Published var dragItemID: UUID?
+    @Published var movePreview: TimelineItem?
     @Published var movingItemID: UUID?
-    @Published var resizePreview: DropPreview?
+    @Published var resizePreview: TimelineItem?
     @Published var resizingItemID: UUID?
     @Published var chipsExpanded = false
     @Published var editMode: EditMode = .inactive
-    @Published var chipItemsData: [ChipItemData] = [
-        .init(id: "30", title: "30分", kind: .duration(30)),
-        .init(id: "60", title: "1時間", kind: .duration(60)),
-        .init(id: "90", title: "90分", kind: .duration(90)),
-        .init(id: "120", title: "2時間", kind: .duration(120)),
-        .init(id: "15", title: "15分", kind: .duration(15)),
-        .init(id: "45", title: "45分", kind: .duration(45)),
-        .init(id: "1min", title: "+1分後", kind: .quickAdd)
-    ]
+    @Published var selectedDate = Date()
+    @Published var isTwoDayView = false
 
-//    private let liveActivity = TimelineViewModel()
     private let minDurationStep: Int = 15
+    private var activity: Activity<MAMONAKULiveActivityAttributes>?
 
-    func addItem(duration: Int, dropY: CGFloat) {
-        let start = startMinutesForDrop(duration: duration, dropY: dropY)
-        let title = duration == 60 ? "1時間" : "30分"
-        guard !isOverlapping(start: start, duration: duration, excluding: nil) else { return }
-        items.append(ScheduleItem(title: title, startMinutes: start, durationMinutes: duration))
+    init(repository: TimelineRepositoryProtocol = TimelineRepository()) {
+        self.repository = repository
+        let stored = repository.fetchItems()
+        if stored.isEmpty {
+            repository.saveItems(items)
+        } else {
+            items = stored
+        }
+    }
+
+    func addItem(item: TimelineItem, dropY: CGFloat, on date: Date) {
+        let start = startMinutesForDrop(duration: item.durationMinutes, dropY: dropY)
+        guard !isOverlapping(start: start, duration: item.durationMinutes, excluding: item.id, on: date) else { return }
+        let updated = TimelineItem(
+            id: item.id,
+            title: item.title,
+            durationMinutes: item.durationMinutes,
+            startMinutes: start,
+            dropDate: selectedDropDate(for: date)
+        )
+        if let index = items.firstIndex(where: { $0.id == item.id }) {
+            items[index] = updated
+        } else {
+            items.append(updated)
+        }
+        persistItems()
     }
 
     func addOneMinuteLaterItem() {
         let nowSeconds = secondsSinceMidnight(date: Date())
         let startMinutes = clampStart(start: (nowSeconds / 60) + 1, duration: 30)
         let title = "1分後(30分)"
-        guard !isOverlapping(start: startMinutes, duration: 30, excluding: nil) else { return }
-        items.append(ScheduleItem(title: title, startMinutes: startMinutes, durationMinutes: 30))
+        guard !isOverlapping(start: startMinutes, duration: 30, excluding: nil, on: selectedDate) else { return }
+        items.append(
+            TimelineItem(
+                title: title,
+                durationMinutes: 30,
+                startMinutes: startMinutes,
+                dropDate: selectedDropDate(for: selectedDate)
+            )
+        )
+        persistItems()
     }
 
-    func updateMovePreview(item: ScheduleItem, deltaY: CGFloat) {
-        let start = startMinutesForMove(item: item, deltaY: deltaY)
-        let preview = DropPreview(title: item.title, startMinutes: start, durationMinutes: item.durationMinutes)
+    func addStockItem(title: String, durationMinutes: Int) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+        items.append(
+            TimelineItem(
+                title: trimmedTitle,
+                durationMinutes: durationMinutes
+            )
+        )
+        persistItems()
+    }
+
+    func updateMovePreview(item: TimelineItem, deltaY: CGFloat) {
+        guard let start = startMinutesForMove(item: item, deltaY: deltaY) else { return }
+        let baseDate = item.dropDate ?? selectedDate
+        let preview = TimelineItem(
+            title: item.title,
+            durationMinutes: item.durationMinutes,
+            startMinutes: start,
+            dropDate: selectedDropDate(for: baseDate)
+        )
         movePreview = preview
         movingItemID = item.id
     }
 
-    func commitMove(item: ScheduleItem, deltaY: CGFloat) {
+    func commitMove(item: TimelineItem, deltaY: CGFloat) {
         defer {
             movePreview = nil
             movingItemID = nil
         }
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        let start = startMinutesForMove(item: item, deltaY: deltaY)
-        guard !isOverlapping(start: start, duration: item.durationMinutes, excluding: item.id) else { return }
+        guard let start = startMinutesForMove(item: item, deltaY: deltaY) else { return }
+        let baseDate = item.dropDate ?? selectedDate
+        guard !isOverlapping(start: start, duration: item.durationMinutes, excluding: item.id, on: baseDate) else { return }
         items[index].startMinutes = start
+        items[index].dropDate = selectedDropDate(for: baseDate)
+        persistItems()
     }
 
-    func updateResizePreview(item: ScheduleItem, deltaY: CGFloat) {
+    func updateResizePreview(item: TimelineItem, deltaY: CGFloat) {
+        guard let startMinutes = item.startMinutes else { return }
         let duration = durationForResize(item: item, deltaY: deltaY)
-        resizePreview = DropPreview(title: item.title, startMinutes: item.startMinutes, durationMinutes: duration)
+        let baseDate = item.dropDate ?? selectedDate
+        resizePreview = TimelineItem(
+            title: item.title,
+            durationMinutes: duration,
+            startMinutes: startMinutes,
+            dropDate: selectedDropDate(for: baseDate)
+        )
         resizingItemID = item.id
     }
 
-    func commitResize(item: ScheduleItem, deltaY: CGFloat) {
+    func commitResize(item: TimelineItem, deltaY: CGFloat) {
         defer {
             resizePreview = nil
             resizingItemID = nil
         }
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         let duration = durationForResize(item: item, deltaY: deltaY)
-        guard !isOverlapping(start: item.startMinutes, duration: duration, excluding: item.id) else { return }
+        guard let startMinutes = item.startMinutes else { return }
+        let baseDate = item.dropDate ?? selectedDate
+        guard !isOverlapping(start: startMinutes, duration: duration, excluding: item.id, on: baseDate) else { return }
         items[index].durationMinutes = duration
+        persistItems()
     }
 
     func deleteItem(id: UUID) {
         items.removeAll { $0.id == id }
+        persistItems()
     }
 
-    func updatePreview(duration: Int, dropY: CGFloat) {
-        let start = startMinutesForDrop(duration: duration, dropY: dropY)
-        dropPreview = DropPreview(title: previewTitle(for: duration), startMinutes: start, durationMinutes: duration)
+    func updatePreview(item: TimelineItem, dropY: CGFloat, on date: Date) {
+        let start = startMinutesForDrop(duration: item.durationMinutes, dropY: dropY)
+        dropPreview = TimelineItem(
+            id: item.id,
+            title: item.title,
+            durationMinutes: item.durationMinutes,
+            startMinutes: start,
+            dropDate: selectedDropDate(for: date)
+        )
     }
 
     func moveChips(from: IndexSet, to: Int, visibleCount: Int) {
@@ -99,11 +159,23 @@ final class TimelineViewModel: ObservableObject {
         var visibleIndices = Array(0..<visibleCount)
         visibleIndices.move(fromOffsets: from, toOffset: clampedTo)
 
-        var new = chipItemsData
+        var new = items
         for (newIndex, oldIndex) in visibleIndices.enumerated() {
-            new[newIndex] = chipItemsData[oldIndex]
+            new[newIndex] = items[oldIndex]
         }
-        chipItemsData = new
+        items = new
+        persistItems()
+    }
+
+    var itemsForSelectedDate: [TimelineItem] {
+        items(for: selectedDate)
+    }
+
+    func items(for date: Date) -> [TimelineItem] {
+        items.filter { item in
+            guard let dropDate = item.dropDate else { return false }
+            return Calendar.current.isDate(dropDate, inSameDayAs: date)
+        }
     }
 
     func minutesSinceMidnight(date: Date) -> Int {
@@ -135,8 +207,8 @@ final class TimelineViewModel: ObservableObject {
         if let next = nextItem(afterSeconds: nowSeconds) {
             let cal = Calendar.current
             let startDate = cal.date(
-                bySettingHour: next.startMinutes / 60,
-                minute: next.startMinutes % 60,
+                bySettingHour: (next.startMinutes ?? 0) / 60,
+                minute: (next.startMinutes ?? 0) % 60,
                 second: 0,
                 of: Date()
             )
@@ -150,28 +222,26 @@ final class TimelineViewModel: ObservableObject {
         }
     }
 
-    private func startMinutesForMove(item: ScheduleItem, deltaY: CGFloat) -> Int {
+    private func startMinutesForMove(item: TimelineItem, deltaY: CGFloat) -> Int? {
+        guard let startMinutes = item.startMinutes else { return nil }
         let deltaMinutes = Int((deltaY / hourHeight) * 60)
-        let rawStart = item.startMinutes + deltaMinutes
+        let rawStart = startMinutes + deltaMinutes
         let snapped = snap(minutes: rawStart, step: minuteStep)
         return clampStart(start: snapped, duration: item.durationMinutes)
     }
 
-    private func durationForResize(item: ScheduleItem, deltaY: CGFloat) -> Int {
+    private func durationForResize(item: TimelineItem, deltaY: CGFloat) -> Int {
         let deltaMinutes = Int((deltaY / hourHeight) * 60)
         let rawDuration = item.durationMinutes + deltaMinutes
         let snapped = snap(minutes: rawDuration, step: minDurationStep)
-        return clampDuration(start: item.startMinutes, duration: snapped)
+        let startMinutes = item.startMinutes ?? 0
+        return clampDuration(start: startMinutes, duration: snapped)
     }
 
     private func startMinutesForDrop(duration: Int, dropY: CGFloat) -> Int {
         let minutes = minutesFromOffset(dropY)
         let snapped = snap(minutes: minutes, step: minuteStep)
         return clampStart(start: snapped, duration: duration)
-    }
-
-    private func previewTitle(for duration: Int) -> String {
-        duration == 60 ? "1時間" : "30分"
     }
 
     private func minutesFromOffset(_ y: CGFloat) -> Int {
@@ -188,20 +258,50 @@ final class TimelineViewModel: ObservableObject {
         return (h * 3600) + (m * 60) + s
     }
 
-    private func nextItem(afterSeconds seconds: Int) -> ScheduleItem? {
+    private func nextItem(afterSeconds seconds: Int) -> TimelineItem? {
         let startMinutes = Int(ceil(Double(seconds) / 60.0))
-        return items
-            .filter { $0.startMinutes >= startMinutes }
-            .min(by: { $0.startMinutes < $1.startMinutes })
+        let candidates: [(TimelineItem, Int)] = itemsForSelectedDate.compactMap { item in
+            guard let minutes = item.startMinutes else { return nil }
+            return (item, minutes)
+        }
+        return candidates
+            .filter { $0.1 >= startMinutes }
+            .min(by: { $0.1 < $1.1 })?
+            .0
     }
 
-    private func isOverlapping(start: Int, duration: Int, excluding id: UUID?) -> Bool {
+    private func isOverlapping(start: Int, duration: Int, excluding id: UUID?, on date: Date) -> Bool {
         let end = start + duration
         return items.contains { item in
             if let id, item.id == id { return false }
-            let itemEnd = item.startMinutes + item.durationMinutes
-            return start < itemEnd && end > item.startMinutes
+            guard let itemStart = item.startMinutes,
+                  let dropDate = item.dropDate,
+                  Calendar.current.isDate(dropDate, inSameDayAs: date)
+            else { return false }
+            let itemEnd = itemStart + item.durationMinutes
+            return start < itemEnd && end > itemStart
         }
+    }
+
+    static func timeRangeText(startMinutes: Int?, durationMinutes: Int) -> String {
+        guard let startMinutes else { return "" }
+        let start = minutesToTime(startMinutes)
+        let end = minutesToTime(startMinutes + durationMinutes)
+        return "\(start) - \(end)"
+    }
+
+    private static func minutesToTime(_ minutes: Int) -> String {
+        let h = minutes / 60
+        let m = minutes % 60
+        return String(format: "%02d:%02d", h, m)
+    }
+
+    private func persistItems() {
+        repository.saveItems(items)
+    }
+
+    private func selectedDropDate(for date: Date) -> Date {
+        Calendar.current.startOfDay(for: date)
     }
 
     private func snap(minutes: Int, step: Int) -> Int {
@@ -220,7 +320,10 @@ final class TimelineViewModel: ObservableObject {
         let maxDuration = max(minDurationStep, (24 * 60) - start)
         return max(minDurationStep, min(maxDuration, duration))
     }
-    
+}
+
+
+extension TimelineViewModel {
     func startOrUpdate(nextTitle: String, nextStartDate: Date?) async {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 

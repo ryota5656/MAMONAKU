@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ScheduleItemPreviewView: View {
-    let item: DropPreview
+    let item: TimelineItem
 
     var body: some View {
         HStack(spacing: 0) {
@@ -9,7 +9,10 @@ struct ScheduleItemPreviewView: View {
                 .fill(Color.black.opacity(0.3))
                 .frame(width: 8)
             VStack(alignment: .leading, spacing: 4) {
-                Text(timeRangeText())
+                Text(TimelineViewModel.timeRangeText(
+                    startMinutes: item.startMinutes,
+                    durationMinutes: item.durationMinutes
+                ))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -23,15 +26,5 @@ struct ScheduleItemPreviewView: View {
         )
     }
 
-    private func timeRangeText() -> String {
-        let start = minutesToTime(item.startMinutes)
-        let end = minutesToTime(item.startMinutes + item.durationMinutes)
-        return "\(start) - \(end)"
-    }
-
-    private func minutesToTime(_ minutes: Int) -> String {
-        let h = minutes / 60
-        let m = minutes % 60
-        return String(format: "%02d:%02d", h, m)
-    }
+ 
 }

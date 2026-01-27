@@ -9,7 +9,7 @@ struct TimelineScreen: View {
         _viewModel = StateObject(wrappedValue: TimelineViewModel())
     }
 
-    init(items: [ScheduleItem]) {
+    init(items: [TimelineItem]) {
         let viewModel = TimelineViewModel()
         viewModel.items = items
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -28,7 +28,7 @@ struct TimelineScreen: View {
                 whiteSheet
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(AppColors.background)
+//            .background(Color.black.opacity(0.1))
             .simultaneousGesture(
                 TapGesture()
                     .onEnded {
@@ -66,12 +66,81 @@ struct TimelineScreen: View {
     private var timelineColumn: some View {
         GeometryReader { geo in
             let height = viewModel.hourHeight * 24
-            let width = geo.size.width
+            let totalWidth = geo.size.width
+            let dates = timelineDates
+            let spacing: CGFloat = 0
+            let columnWidth = (totalWidth - spacing * CGFloat(max(0, dates.count - 1))) / CGFloat(max(1, dates.count))
 
-            ZStack(alignment: .topLeading) {
-                timelineGrid(width: width, height: height)
+            HStack(alignment: .top, spacing: spacing) {
+                ForEach(dates, id: \.self) { date in
+                    dayTimelineColumn(date: date, width: columnWidth, height: height)
+                }
+            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: dates.count)
+        }
+        .frame(height: viewModel.hourHeight * 24)
+        .gesture(timelineSwipeGesture)
+    }
 
-                ForEach(viewModel.items) { item in
+    private var timelineSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 30)
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                guard abs(horizontal) > abs(vertical), abs(horizontal) > 60 else { return }
+                if horizontal < 0 {
+                    advanceTimeline()
+                } else {
+                    retreatTimeline()
+                }
+            }
+    }
+
+    private func advanceTimeline() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            if viewModel.isTwoDayView {
+                viewModel.selectedDate = addDays(1, to: viewModel.selectedDate)
+                viewModel.isTwoDayView = false
+            } else {
+                viewModel.isTwoDayView = true
+            }
+        }
+    }
+
+    private func retreatTimeline() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            if viewModel.isTwoDayView {
+                viewModel.isTwoDayView = false
+            } else {
+                viewModel.selectedDate = addDays(-1, to: viewModel.selectedDate)
+                viewModel.isTwoDayView = true
+            }
+        }
+    }
+
+    private func addDays(_ value: Int, to date: Date) -> Date {
+        Calendar.current.date(byAdding: .day, value: value, to: date) ?? date
+    }
+
+    private var timelineDates: [Date] {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: viewModel.selectedDate)
+        if viewModel.isTwoDayView {
+            let next = cal.date(byAdding: .day, value: 1, to: start) ?? start
+            return [start, next]
+        }
+        return [start]
+    }
+
+    private func dayTimelineColumn(date: Date, width: CGFloat, height: CGFloat) -> some View {
+        let items = viewModel.items(for: date)
+        let itemWidth = max(80, width - (viewModel.timelinePadding * 0.5))
+
+        return ZStack(alignment: .topLeading) {
+            timelineGrid(width: width, height: height)
+
+            ForEach(items) { item in
+                if let startMinutes = item.startMinutes {
                     ScheduleItemView(
                         item: item,
                         isEditing: viewModel.editMode.isEditing,
@@ -96,70 +165,77 @@ struct TimelineScreen: View {
                             viewModel.deleteItem(id: item.id)
                         }
                     )
-                        .frame(
-                            width: max(80, width - viewModel.timelinePadding),
-                            height: viewModel.heightForDuration(item.durationMinutes)
-                        )
-                        .offset(x: 0, y: viewModel.yOffset(for: item.startMinutes))
+                    .frame(
+                        width: itemWidth,
+                        height: viewModel.heightForDuration(item.durationMinutes)
+                    )
+                    .offset(x: 0, y: viewModel.yOffset(for: startMinutes))
                 }
-                
+            }
 
-                if let preview = viewModel.dropPreview {
-                    ScheduleItemPreviewView(item: preview)
-                        .frame(
-                            width: max(80, width - viewModel.timelinePadding),
-                            height: viewModel.heightForDuration(preview.durationMinutes)
-                        )
-                        .offset(x: 0, y: viewModel.yOffset(for: preview.startMinutes))
-                }
+            if let preview = viewModel.dropPreview, isSameDay(preview.dropDate, date) {
+                ScheduleItemPreviewView(item: preview)
+                    .frame(
+                        width: itemWidth,
+                        height: viewModel.heightForDuration(preview.durationMinutes)
+                    )
+                    .offset(x: 0, y: viewModel.yOffset(for: preview.startMinutes ?? 0))
+            }
 
-                if let preview = viewModel.movePreview {
-                    ScheduleItemPreviewView(item: preview)
-                        .frame(
-                            width: max(80, width - viewModel.timelinePadding),
-                            height: viewModel.heightForDuration(preview.durationMinutes)
-                        )
-                        .offset(x: 0, y: viewModel.yOffset(for: preview.startMinutes))
-                }
+            if let preview = viewModel.movePreview, isSameDay(preview.dropDate, date) {
+                ScheduleItemPreviewView(item: preview)
+                    .frame(
+                        width: itemWidth,
+                        height: viewModel.heightForDuration(preview.durationMinutes)
+                    )
+                    .offset(x: 0, y: viewModel.yOffset(for: preview.startMinutes ?? 0))
+            }
 
-                if let preview = viewModel.resizePreview {
-                    ScheduleItemPreviewView(item: preview)
-                        .frame(
-                            width: max(80, width - viewModel.timelinePadding),
-                            height: viewModel.heightForDuration(preview.durationMinutes)
-                        )
-                        .offset(x: 0, y: viewModel.yOffset(for: preview.startMinutes))
-                }
+            if let preview = viewModel.resizePreview, isSameDay(preview.dropDate, date) {
+                ScheduleItemPreviewView(item: preview)
+                    .frame(
+                        width: itemWidth,
+                        height: viewModel.heightForDuration(preview.durationMinutes)
+                    )
+                    .offset(x: 0, y: viewModel.yOffset(for: preview.startMinutes ?? 0))
+            }
 
+            if Calendar.current.isDate(date, inSameDayAs: Date()) {
                 currentTimeLine(width: width)
             }
-            .frame(width: width, height: height)
-            .coordinateSpace(name: "timeline")
-            .onDrop(
-                of: [UTType.text],
-                delegate: TimelineDropDelegate(
-                    hourHeight: viewModel.hourHeight,
-                    minuteStep: viewModel.minuteStep,
-                    timelineHeight: height,
-                    preview: $viewModel.dropPreview,
-                    previewDuration: $viewModel.previewDuration,
-                    dragDuration: $viewModel.dragDuration,
-                    onPreview: { duration, location in
-                        viewModel.updatePreview(duration: duration, dropY: location.y)
-                    },
-                    onDrop: { duration, location in
-                        viewModel.addItem(duration: duration, dropY: location.y)
-                    }
-                )
-            )
         }
-        .frame(height: viewModel.hourHeight * 24)
+        .frame(width: width, height: height)
+        .coordinateSpace(name: "timeline")
+        .onDrop(
+            of: [UTType.text],
+            delegate: TimelineDropDelegate(
+                hourHeight: viewModel.hourHeight,
+                minuteStep: viewModel.minuteStep,
+                timelineHeight: height,
+                preview: $viewModel.dropPreview,
+                previewItemID: $viewModel.previewItemID,
+                dragItemID: $viewModel.dragItemID,
+                onPreview: { itemID, location in
+                    guard let item = viewModel.items.first(where: { $0.id == itemID }) else { return }
+                    viewModel.updatePreview(item: item, dropY: location.y, on: date)
+                },
+                onDrop: { itemID, location in
+                    guard let item = viewModel.items.first(where: { $0.id == itemID }) else { return }
+                    viewModel.addItem(item: item, dropY: location.y, on: date)
+                }
+            )
+        )
+    }
+
+    private func isSameDay(_ lhs: Date?, _ rhs: Date) -> Bool {
+        guard let lhs else { return false }
+        return Calendar.current.isDate(lhs, inSameDayAs: rhs)
     }
 
     private var whiteSheet: some View {
         GeometryReader { proxy in
             let available = proxy.size.height
-            let topPadding: CGFloat = viewModel.chipsExpanded ? 24 : 80
+            let topPadding: CGFloat = viewModel.chipsExpanded ? 24 : 24
             let initialHeight = available * 0.82
             let expandedHeight = available * 1
             let collapsedHeight = available * 0.82
@@ -170,6 +246,10 @@ struct TimelineScreen: View {
             )
 
             VStack(spacing: 16) {
+                CalendarHeaderView(
+                    selectedDate: $viewModel.selectedDate,
+                    isTwoDayView: $viewModel.isTwoDayView
+                )
                 ScrollView {
                     HStack(alignment: .top, spacing: 0) {
                         timeColumn
@@ -177,7 +257,20 @@ struct TimelineScreen: View {
                     }
                 }
 
-                taskArea
+                TimelineStockView(
+                    items: viewModel.items,
+                    chipsExpanded: $viewModel.chipsExpanded,
+                    dragItemID: $viewModel.dragItemID,
+                    onAdd: { title, durationMinutes in
+                        viewModel.addStockItem(title: title, durationMinutes: durationMinutes)
+                    },
+                    onMove: { from, to, visibleCount in
+                        viewModel.moveChips(from: from, to: to, visibleCount: visibleCount)
+                    },
+                    onDelete: { id in
+                        viewModel.deleteItem(id: id)
+                    }
+                )
             }
             .padding(.top, topPadding)
             .padding(.horizontal, viewModel.timelinePadding)
@@ -187,6 +280,7 @@ struct TimelineScreen: View {
             .background(AppColors.background, in: sheetShape)
             .environment(\.colorScheme, .light)
             .clipShape(sheetShape)
+            .shadow(color: .black.opacity(0.12), radius: 20, x: 0, y: -6)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.chipsExpanded)
             .animation(.spring(response: 0.28, dampingFraction: 0.9), value: sheetHeight)
             .onAppear {
@@ -207,107 +301,6 @@ struct TimelineScreen: View {
         let minHeight = max(360, available * 0.45)
         let maxHeight = available + 20
         return min(max(proposed, minHeight), maxHeight)
-    }
-
-    private var taskArea: some View {
-        let rows = viewModel.chipsExpanded ? 5 : 0
-        let visible = Array(viewModel.chipItemsData.prefix(rows))
-        let rowHeight: CGFloat = 44
-
-        return VStack(spacing: 8) {
-            HStack {
-                Text("TASK")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        viewModel.chipsExpanded.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(viewModel.chipsExpanded ? "閉じる" : "拡張")
-                        Image(systemName: viewModel.chipsExpanded ? "chevron.down" : "chevron.up")
-                    }
-                    .font(.system(size: 12, weight: .semibold))
-                }
-                Button {
-                    viewModel.editMode = viewModel.editMode.isEditing ? .inactive : .active
-                } label: {
-                    Text(viewModel.editMode.isEditing ? "完了" : "並べ替え")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-            }
-
-            if !visible.isEmpty {
-            List {
-                ForEach(visible) { chip in
-                    chipRow(for: chip)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                }
-                .onMove(perform: { from, to in
-                        viewModel.moveChips(from: from, to: to, visibleCount: visible.count)
-                })
-            }
-            .listStyle(.plain)
-                .environment(\.editMode, $viewModel.editMode)
-            .frame(height: rowHeight * CGFloat(visible.count))
-            }
-        }
-        .padding(16)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.black.opacity(0.12), lineWidth: 1)
-        )
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.chipsExpanded)
-    }
-
-    @ViewBuilder
-    private func chipRow(for chip: ChipItemData) -> some View {
-        HStack {
-            switch chip.kind {
-            case .duration(let minutes):
-                DraggableChip(title: chip.title, durationMinutes: minutes, dragDuration: $viewModel.dragDuration)
-            case .quickAdd:
-                QuickAddChip(title: chip.title, action: viewModel.addOneMinuteLaterItem)
-            }
-            Spacer()
-        }
-    }
-
-    struct DraggableChip: View {
-        let title: String
-        let durationMinutes: Int
-        @Binding var dragDuration: Int?
-
-        var body: some View {
-            Text(title)
-                .font(.system(size: 12, weight: .bold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .cornerRadius(8)
-                .onDrag {
-                    dragDuration = durationMinutes
-                    return NSItemProvider(object: "\(durationMinutes)" as NSString)
-                }
-        }
-    }
-
-    struct QuickAddChip: View {
-        let title: String
-        let action: () -> Void
-
-        var body: some View {
-            Button(action: action) {
-                Text(title)
-                    .font(.system(size: 12, weight: .bold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .cornerRadius(8)
-            }
-        }
     }
 
     private func currentTimeLine(width: CGFloat) -> some View {
@@ -358,26 +351,26 @@ struct TimelineScreen: View {
             let nowSeconds = secondsSinceMidnight(date: context.date)
             let next = nextItem(afterSeconds: nowSeconds)
 
-            VStack(alignment: .center, spacing: 8) {
+            let targetSeconds = (next?.startMinutes ?? 0) * 60
+            let diff = max(0, targetSeconds - nowSeconds)
+
+            VStack(alignment: .center, spacing: 10) {
                 Text("次の予定まで")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.black)
+                    .foregroundColor(.black.opacity(0.6))
 
-                if let next {
-                    let targetSeconds = next.startMinutes * 60
-                    let diff = max(0, targetSeconds - nowSeconds)
-                    HStack(spacing: 8) {
-                        Text(formatCountdown(seconds: diff))
-                            .font(.system(size: 20, design: .monospaced))
-                            .foregroundColor(.black)
-                        Text("(\(next.title) \(minutesToTime(next.startMinutes)))")
-                            .font(.system(size: 12))
-                            .foregroundColor(.black.opacity(0.7))
-                    }
+                if next != nil {
+                    CountdownDisplay(seconds: diff)
                 } else {
                     Text("予定なし")
-                        .font(.system(size: 14))
-                        .foregroundColor(.black.opacity(0.7))
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.black.opacity(0.6))
+                }
+
+                if let next {
+                    Text("\(next.title) \(minutesToTime(next.startMinutes ?? 0))")
+                        .font(.system(size: 12))
+                        .foregroundColor(.black.opacity(0.5))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .center)
@@ -393,11 +386,16 @@ struct TimelineScreen: View {
         return (h * 3600) + (m * 60) + s
     }
 
-    private func nextItem(afterSeconds seconds: Int) -> ScheduleItem? {
+    private func nextItem(afterSeconds seconds: Int) -> TimelineItem? {
         let startMinutes = Int(ceil(Double(seconds) / 60.0))
-        return viewModel.items
-            .filter { $0.startMinutes >= startMinutes }
-            .min(by: { $0.startMinutes < $1.startMinutes })
+        let candidates: [(TimelineItem, Int)] = viewModel.itemsForSelectedDate.compactMap { item in
+            guard let minutes = item.startMinutes else { return nil }
+            return (item, minutes)
+        }
+        return candidates
+            .filter { $0.1 >= startMinutes }
+            .min(by: { $0.1 < $1.1 })?
+            .0
     }
 
     private func formatCountdown(seconds: Int) -> String {
@@ -407,6 +405,13 @@ struct TimelineScreen: View {
         return String(format: "%02d:%02d:%02d", h, m, s)
     }
 
+    private func countdownComponents(seconds: Int) -> (String, String, String) {
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let s = seconds % 60
+        return (String(format: "%02d", h), String(format: "%02d", m), String(format: "%02d", s))
+    }
+
     private func minutesToTime(_ minutes: Int) -> String {
         let h = minutes / 60
         let m = minutes % 60
@@ -414,84 +419,131 @@ struct TimelineScreen: View {
     }
 }
 
+private struct CountdownDisplay: View {
+    let seconds: Int
+
+    var body: some View {
+        let parts = components
+        HStack(spacing: 12) {
+            CountdownDigit(text: parts.h)
+            CountdownSeparator()
+            CountdownDigit(text: parts.m)
+            CountdownSeparator()
+            CountdownDigit(text: parts.s)
+        }
+        .animation(.easeInOut(duration: 0.2), value: seconds)
+    }
+
+    private var components: (h: String, m: String, s: String) {
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let s = seconds % 60
+        return (
+            String(format: "%02d", h),
+            String(format: "%02d", m),
+            String(format: "%02d", s)
+        )
+    }
+}
+
+private struct CountdownDigit: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.custom("DevanagariSangamMN-Bold", size: 44))
+            .foregroundColor(Color.black.opacity(0.9))
+            .monospacedDigit()
+            .contentTransition(.numericText())
+    }
+}
+
+private struct CountdownSeparator: View {
+    var body: some View {
+        Text(":")
+            .font(.system(size: 34, weight: .light, design: .rounded))
+            .foregroundColor(Color.black)
+    }
+}
+
 private struct TimelineDropDelegate: DropDelegate {
     let hourHeight: CGFloat
     let minuteStep: Int
     let timelineHeight: CGFloat
-    @Binding var preview: DropPreview?
-    @Binding var previewDuration: Int?
-    @Binding var dragDuration: Int?
-    let onPreview: (Int, CGPoint) -> Void
-    let onDrop: (Int, CGPoint) -> Void
-    @State private var isLoadingDuration = false
+    @Binding var preview: TimelineItem?
+    @Binding var previewItemID: UUID?
+    @Binding var dragItemID: UUID?
+    let onPreview: (UUID, CGPoint) -> Void
+    let onDrop: (UUID, CGPoint) -> Void
+    @State private var isLoadingItemID = false
 
-    func dropEntered(info: DropInfo) {
-        loadDurationIfNeeded(from: info)
-    }
+//    func dropEntered(info: DropInfo) {
+//        loadDurationIfNeeded(from: info)
+//    }
 
     func performDrop(info: DropInfo) -> Bool {
         defer {
             DispatchQueue.main.async {
                 preview = nil
-                previewDuration = nil
-                dragDuration = nil
+                previewItemID = nil
+                dragItemID = nil
             }
         }
 
         guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
 
         provider.loadItem(forTypeIdentifier: UTType.text.identifier, options: nil) { item, _ in
-            guard let duration = parseDuration(from: item) else { return }
+            guard let itemID = parseItemID(from: item) else { return }
 
             DispatchQueue.main.async {
                 let location = info.location
-                onDrop(duration, location)
+                onDrop(itemID, location)
             }
         }
         return true
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        if let duration = previewDuration ?? dragDuration {
-            onPreview(duration, info.location)
+        if let itemID = previewItemID ?? dragItemID {
+            onPreview(itemID, info.location)
         } else {
-            loadDurationIfNeeded(from: info)
+            loadItemIDIfNeeded(from: info)
         }
         return DropProposal(operation: .copy)
     }
 
     func dropExited(info: DropInfo) {
         preview = nil
-        previewDuration = nil
+        previewItemID = nil
     }
 
-    private func loadDurationIfNeeded(from info: DropInfo) {
-        guard !isLoadingDuration, previewDuration == nil,
+    private func loadItemIDIfNeeded(from info: DropInfo) {
+        guard !isLoadingItemID, previewItemID == nil,
               let provider = info.itemProviders(for: [UTType.text]).first
         else { return }
 
-        isLoadingDuration = true
+        isLoadingItemID = true
         provider.loadItem(forTypeIdentifier: UTType.text.identifier, options: nil) { item, _ in
-            defer { isLoadingDuration = false }
-            guard let duration = parseDuration(from: item) else { return }
+            defer { isLoadingItemID = false }
+            guard let itemID = parseItemID(from: item) else { return }
 
             DispatchQueue.main.async {
-                previewDuration = duration
-                onPreview(duration, info.location)
+                previewItemID = itemID
+                onPreview(itemID, info.location)
             }
         }
     }
 
-    private func parseDuration(from item: NSSecureCoding?) -> Int? {
+    private func parseItemID(from item: NSSecureCoding?) -> UUID? {
         if let data = item as? Data,
            let text = String(data: data, encoding: .utf8) {
-            return Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            return UUID(uuidString: text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         if let text = item as? String {
-            return Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            return UUID(uuidString: text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         if let text = item as? NSString {
-            return Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            return UUID(uuidString: text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         return nil
     }
@@ -502,31 +554,18 @@ private struct TimelineDropDelegate: DropDelegate {
 }
 #Preview("scheduleItemPreview"){
     ScheduleItemPreviewView(
-        item: DropPreview(title: "Preview", startMinutes: 120, durationMinutes: 60)
+        item: TimelineItem(title: "Preview", durationMinutes: 60, startMinutes: 120)
     )
     .frame(height: 100)
     .padding(20)
 }
 
-#Preview("scheduleItem"){
-    ScheduleItemView(
-        item: ScheduleItem(title: "TEST", startMinutes: 90, durationMinutes: 60),
-        isEditing: true,
-        onEnterEdit: {},
-        onMovePreview: { _ in },
-        onMoveEnd: { _ in },
-        onResizePreview: { _ in },
-        onResizeEnd: { _ in },
-        onDelete: {}
-    )
-    .padding(20)
-}
 
 #Preview("timeline with items") {
     TimelineScreen(items: [
-        ScheduleItem(title: "Wake up", startMinutes: 2 * 60, durationMinutes: 15),
-        ScheduleItem(title: "Workout", startMinutes: 2 * 60 + 45, durationMinutes: 60),
-        ScheduleItem(title: "Breakfast", startMinutes: 4 * 60, durationMinutes: 30),
-        ScheduleItem(title: "Study", startMinutes: 5 * 60, durationMinutes: 120)
+        TimelineItem(title: "Wake up", durationMinutes: 15, startMinutes: 2 * 60, dropDate: Date()),
+        TimelineItem(title: "Workout", durationMinutes: 60, startMinutes: 2 * 60 + 45, dropDate: Date()),
+        TimelineItem(title: "Breakfast", durationMinutes: 30, startMinutes: 4 * 60, dropDate: Date()),
+        TimelineItem(title: "Study", durationMinutes: 120, startMinutes: 5 * 60, dropDate: Date())
     ])
 }
