@@ -3,6 +3,7 @@ import SwiftUI
 struct ScheduleItemView: View {
     let item: TimelineItem
     let isEditing: Bool
+    let showTimeRange: Bool
     let onEnterEdit: () -> Void
     let onMovePreview: (CGFloat) -> Void
     let onMoveEnd: (CGFloat) -> Void
@@ -21,7 +22,7 @@ struct ScheduleItemView: View {
                     .frame(width: 8)
 
             VStack(alignment: .leading, spacing: 4) {
-                if item.durationMinutes != 15, item.startMinutes != nil {
+                if showTimeRange, item.startMinutes != nil {
                     Text(TimelineViewModel.timeRangeText(
                         startMinutes: item.startMinutes,
                         durationMinutes: item.durationMinutes
@@ -49,15 +50,15 @@ struct ScheduleItemView: View {
             }
         }
         .contentShape(Rectangle())
-        .simultaneousGesture(
-            TapGesture()
-                .onEnded {
-                    guard !isEditing else { return }
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
-                        isBubbleVisible.toggle()
-                    }
-                }
-        )
+//        .simultaneousGesture(
+//            TapGesture()
+//                .onEnded {
+//                    guard !isEditing else { return }
+//                    withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+//                        isBubbleVisible.toggle()
+//                    }
+//                }
+//        )
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.6, maximumDistance: 10)
                 .onEnded { _ in
@@ -190,6 +191,7 @@ private struct Triangle: Shape {
     ScheduleItemView(
         item: TimelineItem(title: "TEST", durationMinutes: 60, startMinutes: 90, dropDate: Date()),
         isEditing: false,
+        showTimeRange: true,
         onEnterEdit: {},
         onMovePreview: { _ in },
         onMoveEnd: { _ in },

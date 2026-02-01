@@ -24,6 +24,7 @@ class TimelineViewModel: ObservableObject {
     @Published var editMode: EditMode = .inactive
     @Published var selectedDate = Date()
     @Published var isTwoDayView = false
+    @Published var zoomScale: CGFloat = 1.0
 
     private let minDurationStep: Int = 15
     private var activity: Activity<MAMONAKULiveActivityAttributes>?
@@ -195,11 +196,11 @@ class TimelineViewModel: ObservableObject {
     }
 
     func yOffset(for startMinutes: Int) -> CGFloat {
-        (CGFloat(startMinutes) / 60) * hourHeight
+        (CGFloat(startMinutes) / 60) * hourHeight * zoomScale
     }
 
     func heightForDuration(_ minutes: Int) -> CGFloat {
-        (CGFloat(minutes) / 60) * hourHeight
+        (CGFloat(minutes) / 60) * hourHeight * zoomScale
     }
 
     func updateLiveActivity() {
@@ -224,14 +225,14 @@ class TimelineViewModel: ObservableObject {
 
     private func startMinutesForMove(item: TimelineItem, deltaY: CGFloat) -> Int? {
         guard let startMinutes = item.startMinutes else { return nil }
-        let deltaMinutes = Int((deltaY / hourHeight) * 60)
+        let deltaMinutes = Int((deltaY / (hourHeight * zoomScale)) * 60)
         let rawStart = startMinutes + deltaMinutes
         let snapped = snap(minutes: rawStart, step: minuteStep)
         return clampStart(start: snapped, duration: item.durationMinutes)
     }
 
     private func durationForResize(item: TimelineItem, deltaY: CGFloat) -> Int {
-        let deltaMinutes = Int((deltaY / hourHeight) * 60)
+        let deltaMinutes = Int((deltaY / (hourHeight * zoomScale)) * 60)
         let rawDuration = item.durationMinutes + deltaMinutes
         let snapped = snap(minutes: rawDuration, step: minDurationStep)
         let startMinutes = item.startMinutes ?? 0
@@ -245,7 +246,7 @@ class TimelineViewModel: ObservableObject {
     }
 
     private func minutesFromOffset(_ y: CGFloat) -> Int {
-        let minutes = Int((y / hourHeight) * 60)
+        let minutes = Int((y / (hourHeight * zoomScale)) * 60)
         return max(0, min(24 * 60, minutes))
     }
 

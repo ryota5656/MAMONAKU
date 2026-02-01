@@ -16,10 +16,15 @@ protocol TimelineRepositoryProtocol: AnyObject {
 
 final class TimelineRepository: TimelineRepositoryProtocol {
     private let storageKey = "timeline_items"
+    private let appGroupID = "group.sairyo.MAMONAKU"
     private let userDefaults: UserDefaults
 
-    init(userDefaults: UserDefaults = .standard) {
-        self.userDefaults = userDefaults
+    init(userDefaults: UserDefaults? = nil) {
+        if let userDefaults {
+            self.userDefaults = userDefaults
+        } else {
+            self.userDefaults = UserDefaults(suiteName: appGroupID) ?? .standard
+        }
     }
 
     func fetchItems() -> [TimelineItem] {

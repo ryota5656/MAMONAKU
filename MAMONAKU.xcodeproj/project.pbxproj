@@ -51,6 +51,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		4BAB84332F2F4B3600B75F3D /* MAMONAKULiveActivityExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MAMONAKULiveActivityExtension.entitlements; sourceTree = "<group>"; };
 		4BD9F7CD2F1D16EC0094BC8C /* MAMONAKU.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MAMONAKU.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4BD9F7DA2F1D16EE0094BC8C /* MAMONAKUTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MAMONAKUTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4BD9F7E42F1D16EE0094BC8C /* MAMONAKUUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MAMONAKUUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -140,6 +141,7 @@
 		4BD9F7C42F1D16EC0094BC8C = {
 			isa = PBXGroup;
 			children = (
+				4BAB84332F2F4B3600B75F3D /* MAMONAKULiveActivityExtension.entitlements */,
 				4BD9F7CF2F1D16EC0094BC8C /* MAMONAKU */,
 				4BD9F7DD2F1D16EE0094BC8C /* MAMONAKUTests */,
 				4BD9F7E72F1D16EE0094BC8C /* MAMONAKUUITests */,
@@ -514,6 +516,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MAMONAKU/MAMONAKU.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8236RZ538Q;
@@ -560,6 +563,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MAMONAKU/MAMONAKU.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8236RZ538Q;
@@ -708,6 +712,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = MAMONAKULiveActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8236RZ538Q;
@@ -740,6 +745,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = MAMONAKULiveActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8236RZ538Q;

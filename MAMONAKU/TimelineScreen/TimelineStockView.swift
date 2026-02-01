@@ -10,11 +10,12 @@ struct TimelineStockView: View {
 
     @State private var newTitle = ""
     @State private var newDurationMinutes = 30
+    @State private var keyboardHeight: CGFloat = 0
 
     var body: some View {
         let visible = chipsExpanded ? items.filter { $0.dropDate == nil } : []
-        let rowHeight: CGFloat = 24
-        let maxRows = 5
+        let rowHeight: CGFloat = 40
+        let maxRows = 3
         let displayRows = min(visible.count, maxRows)
 
         VStack(spacing: 8) {
@@ -25,16 +26,31 @@ struct TimelineStockView: View {
             headerView
         }
         .padding(8)
+        .padding(.bottom, keyboardHeight)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(Color.black.opacity(0.12), lineWidth: 1)
         )
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: chipsExpanded)
+        .animation(.easeInOut(duration: 0.2), value: keyboardHeight)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
+            keyboardHeight = keyboardHeight(from: notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardHeight = 0
+        }
     }
 
     private var canAdd: Bool {
         !newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func keyboardHeight(from notification: Notification) -> CGFloat {
+        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
+            return 0
+        }
+        return frame.height
     }
 
     @ViewBuilder

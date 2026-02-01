@@ -12,20 +12,22 @@ struct CalendarHeaderView: View {
 
         VStack(spacing: 8) {
             HStack() {
-                HStack(spacing: 6) {
-                    Text(weekdaySymbol.prefix(3).uppercased())
-                        .font(.system(size: 32, weight: .bold))
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 8, height: 8)
-                        .offset(y: -4)
-                }
+//                HStack(spacing: 6) {
+//                    Text(weekdaySymbol.prefix(3).uppercased())
+//                        .font(.system(size: 32, weight: .bold))
+//                    Circle()
+//                        .fill(Color.red)
+//                        .frame(width: 8, height: 8)
+//                        .offset(y: -4)
+//                }
                 Spacer()
                 Text(dateText)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.trailing)
             }
+            .padding(.trailing, 20)
+            .padding(.top, 8)
 
             HStack(spacing: 10) {
                 ForEach(weekDates, id: \.self) { date in
@@ -64,7 +66,8 @@ struct CalendarHeaderView: View {
 
     private func dateText(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM d\nyyyy"
+        formatter.dateFormat = "MMMMd yyyy"
+//        formatter.dateFormat = "MMMM d\nyyyy"
         return formatter.string(from: date)
     }
 

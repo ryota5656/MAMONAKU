@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ScheduleItemPreviewView: View {
     let item: TimelineItem
+    let showTimeRange: Bool
 
     var body: some View {
         HStack(spacing: 0) {
@@ -9,12 +10,14 @@ struct ScheduleItemPreviewView: View {
                 .fill(Color.black.opacity(0.3))
                 .frame(width: 8)
             VStack(alignment: .leading, spacing: 4) {
-                Text(TimelineViewModel.timeRangeText(
-                    startMinutes: item.startMinutes,
-                    durationMinutes: item.durationMinutes
-                ))
+                if showTimeRange {
+                    Text(TimelineViewModel.timeRangeText(
+                        startMinutes: item.startMinutes,
+                        durationMinutes: item.durationMinutes
+                    ))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
+                }
                 Spacer()
             }
         }
@@ -25,6 +28,4 @@ struct ScheduleItemPreviewView: View {
                 .stroke(Color.black.opacity(0.12), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         )
     }
-
- 
 }
