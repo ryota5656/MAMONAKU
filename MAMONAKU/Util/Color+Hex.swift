@@ -27,7 +27,10 @@ extension Color {
 
 enum AppColors {
     static let background = Color(hex: "#F8F8F8")
-    static let surface = Color(hex: "#FFFFFF")
+    static let systemBackground = Color(hex: "#252525")
+    static let systemBackgroundSecondary = Color(hex: "#eaeaea")
+    static let systemBackground2 = Color(hex: "#f5f6fa")
+    static let shadow = Color(hex: "#b5bace")
     static let textPrimary = Color(hex: "#111111")
     static let textSecondary = Color(hex: "#6B6B6B")
     static let divider = Color(hex: "#E5E5E5")

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ScheduleItemView: View {
     let item: TimelineItem
@@ -18,8 +19,18 @@ struct ScheduleItemView: View {
         ZStack(alignment: .topTrailing) {
             HStack(spacing: 0) {
                 RoundedRectangle(cornerRadius: 30)
-                    .fill(Color.black)
-                    .frame(width: 8)
+                    .fill(AppColors.systemBackground)
+                    .frame(width: 15)
+                    .overlay(
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+//                            .padding(5)
+//                            .background(
+//                                Circle()
+//                                    .fill(Color.black)
+//                            )
+                    )
 
             VStack(alignment: .leading, spacing: 4) {
                 if showTimeRange, item.startMinutes != nil {
@@ -46,6 +57,7 @@ struct ScheduleItemView: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 14))
                         .foregroundColor(.black)
+                        .padding(1)
                 }
             }
         }
@@ -62,6 +74,9 @@ struct ScheduleItemView: View {
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.6, maximumDistance: 10)
                 .onEnded { _ in
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.prepare()
+                    generator.impactOccurred()
                     onEnterEdit()
                 }
         )
@@ -90,6 +105,23 @@ struct ScheduleItemView: View {
                     .onAppear { isBubbleWiggling = true }
                     .onDisappear { isBubbleWiggling = false }
                     .zIndex(1)
+            }
+        }
+//        .overlay(
+//            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+//                .stroke(
+//                    isEditing ? AppColors.accent.opacity(0.9) : AppColors.accent.opacity(0.2),
+//                    lineWidth: isEditing ? 2 : 1
+//                )
+//        )
+//        .background(
+//            RoundedRectangle(cornerRadius: 10, style: .continuous)
+//                .fill(AppColors.accent.opacity(0.01))
+//        )
+        .overlay {
+            if isEditing {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(AppColors.accent.opacity(0.35), lineWidth: 0.5)
             }
         }
     }
@@ -129,9 +161,8 @@ struct ScheduleItemView: View {
     // 時間を可変できるハンドル
     private var resizeHandle: some View {
         RoundedRectangle(cornerRadius: 3, style: .continuous)
-            .frame(width: 30, height: 7)
-            .padding(.bottom, 6)
-            .padding(.trailing, 10)
+            .frame(width:.infinity, height: 15)
+            .opacity(0.01)
     }
 
     private var moveHandle: some View {
@@ -142,7 +173,7 @@ struct ScheduleItemView: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Color.black.opacity(0.5))
             )
-            .frame(width: 28, height: 18)
+            .frame(width: 35, height: 30)
             .padding(.top, 6)
             .padding(.leading, 8)
     }
@@ -191,6 +222,22 @@ private struct Triangle: Shape {
     ScheduleItemView(
         item: TimelineItem(title: "TEST", durationMinutes: 60, startMinutes: 90, dropDate: Date()),
         isEditing: false,
+        showTimeRange: true,
+        onEnterEdit: {},
+        onMovePreview: { _ in },
+        onMoveEnd: { _ in },
+        onResizePreview: { _ in },
+        onResizeEnd: { _ in },
+        onDelete: {}
+    )
+    .frame(height: 100)
+    .padding(20)
+}
+
+#Preview("scheduleItemEdit"){
+    ScheduleItemView(
+        item: TimelineItem(title: "TEST", durationMinutes: 60, startMinutes: 90, dropDate: Date()),
+        isEditing: true,
         showTimeRange: true,
         onEnterEdit: {},
         onMovePreview: { _ in },

@@ -5,8 +5,9 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             TimelineScreen()
-                .background(Color.white)
+//                .background(AppColors.systemBackground2)
         }
+        .preferredColorScheme(.light)
     }
 }
 
@@ -34,12 +35,11 @@ struct FontView: View {
             Text("フォント数:\(fontInfo.fontNames.count)")
             List {
                 ForEach (0 ..< fontInfo.fontNames.count) {
-                    Text("\(fontInfo.fontNames[$0])0123")
+                    Text("\(fontInfo.fontNames[$0])0123:")
                         .font(.custom(fontInfo.fontNames[$0], size: 16.0))
                 }
             }
         }
-
     }
 }
 

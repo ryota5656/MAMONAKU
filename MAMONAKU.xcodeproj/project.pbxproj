@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4BAB881B2F37934D00B75F3D /* RealmSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4BAB881A2F37934D00B75F3D /* RealmSwift */; };
+		4BAB881C2F3794F400B75F3D /* RealmSwift in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 4BAB881A2F37934D00B75F3D /* RealmSwift */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		4BAB88252F386A6800B75F3D /* RealmSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4BAB88242F386A6800B75F3D /* RealmSwift */; };
 		4BD9F8482F1D2A640094BC8C /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4BD9F8472F1D2A640094BC8C /* WidgetKit.framework */; };
 		4BD9F84A2F1D2A640094BC8C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4BD9F8492F1D2A640094BC8C /* SwiftUI.framework */; };
 		4BD9F8592F1D2A650094BC8C /* MAMONAKULiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4BD9F8452F1D2A640094BC8C /* MAMONAKULiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -37,6 +40,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		4BAB881D2F3794F400B75F3D /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				4BAB881C2F3794F400B75F3D /* RealmSwift in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		4BD9F85E2F1D2A650094BC8C /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -61,6 +75,20 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4BAB881F2F383FB200B75F3D /* Exceptions for "MAMONAKU" folder in "MAMONAKU" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4BD9F7CC2F1D16EC0094BC8C /* MAMONAKU */;
+		};
+		4BAB88232F38534000B75F3D /* Exceptions for "MAMONAKU" folder in "MAMONAKULiveActivityExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Util/Color+Hex.swift",
+			);
+			target = 4BD9F8442F1D2A640094BC8C /* MAMONAKULiveActivityExtension */;
+		};
 		4BD9F85A2F1D2A650094BC8C /* Exceptions for "MAMONAKULiveActivity" folder in "MAMONAKULiveActivityExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -80,6 +108,10 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4BD9F7CF2F1D16EC0094BC8C /* MAMONAKU */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4BAB881F2F383FB200B75F3D /* Exceptions for "MAMONAKU" folder in "MAMONAKU" target */,
+				4BAB88232F38534000B75F3D /* Exceptions for "MAMONAKU" folder in "MAMONAKULiveActivityExtension" target */,
+			);
 			path = MAMONAKU;
 			sourceTree = "<group>";
 		};
@@ -109,6 +141,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4BAB881B2F37934D00B75F3D /* RealmSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -130,6 +163,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4BAB88252F386A6800B75F3D /* RealmSwift in Frameworks */,
 				4BD9F84A2F1D2A640094BC8C /* SwiftUI.framework in Frameworks */,
 				4BD9F8482F1D2A640094BC8C /* WidgetKit.framework in Frameworks */,
 			);
@@ -182,6 +216,7 @@
 				4BD9F7CA2F1D16EC0094BC8C /* Frameworks */,
 				4BD9F7CB2F1D16EC0094BC8C /* Resources */,
 				4BD9F85E2F1D2A650094BC8C /* Embed Foundation Extensions */,
+				4BAB881D2F3794F400B75F3D /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -193,6 +228,7 @@
 			);
 			name = MAMONAKU;
 			packageProductDependencies = (
+				4BAB881A2F37934D00B75F3D /* RealmSwift */,
 			);
 			productName = MAMONAKU;
 			productReference = 4BD9F7CD2F1D16EC0094BC8C /* MAMONAKU.app */;
@@ -261,6 +297,7 @@
 			);
 			name = MAMONAKULiveActivityExtension;
 			packageProductDependencies = (
+				4BAB88242F386A6800B75F3D /* RealmSwift */,
 			);
 			productName = MAMONAKULiveActivityExtension;
 			productReference = 4BD9F8452F1D2A640094BC8C /* MAMONAKULiveActivityExtension.appex */;
@@ -301,6 +338,9 @@
 			);
 			mainGroup = 4BD9F7C42F1D16EC0094BC8C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4BAB88192F37934D00B75F3D /* XCRemoteSwiftPackageReference "realm-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4BD9F7CE2F1D16EC0094BC8C /* Products */;
 			projectDirPath = "";
@@ -525,6 +565,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MAMONAKU/Info.plist;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "カレンダーは、イベントの表示に使用されます。";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -532,6 +574,7 @@
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -572,6 +615,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MAMONAKU/Info.plist;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "カレンダーは、イベントの表示に使用されます。";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -579,6 +624,7 @@
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -823,6 +869,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4BAB88192F37934D00B75F3D /* XCRemoteSwiftPackageReference "realm-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/realm/realm-swift";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4BAB881A2F37934D00B75F3D /* RealmSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4BAB88192F37934D00B75F3D /* XCRemoteSwiftPackageReference "realm-swift" */;
+			productName = RealmSwift;
+		};
+		4BAB88242F386A6800B75F3D /* RealmSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4BAB88192F37934D00B75F3D /* XCRemoteSwiftPackageReference "realm-swift" */;
+			productName = RealmSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 4BD9F7C52F1D16EC0094BC8C /* Project object */;
 }

@@ -5,19 +5,11 @@ struct WhiteSheetView: View {
     @ObservedObject var viewModel: TimelineViewModel
     @Binding var sheetHeight: CGFloat
     @State private var lastMagnification: CGFloat = 1.0
+    private let currentTimeAnchorID = "currentTimeAnchor"
 
     var body: some View {
         GeometryReader { proxy in
-            let available = proxy.size.height
-            let topPadding: CGFloat = viewModel.chipsExpanded ? 24 : 24
-            let initialHeight = available * 0.82
-            let expandedHeight = available * 1
-            let collapsedHeight = available * 0.82
-            let sheetShape = RoundedRectangle(cornerRadius: 50, style: .continuous)
-            let clampedHeight = clampedSheetHeight(
-                sheetHeight == 0 ? initialHeight : sheetHeight,
-                in: available
-            )
+            let sheetShape = RoundedRectangle(cornerRadius: 30, style: .continuous)
 
             VStack(spacing: 16) {
                 CalendarHeaderView(
@@ -25,48 +17,53 @@ struct WhiteSheetView: View {
                     isTwoDayView: $viewModel.isTwoDayView
                 )
                 
-                ScrollView {
-                    HStack(alignment: .top, spacing: 0) {
-                        timeColumn
-                        timelineColumn
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 0) {
+                            timeColumn
+                            timelineColumn
+                        }
+                        .background(
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if viewModel.editMode.isEditing {
+                                        viewModel.editMode = .inactive
+                                    }
+                                }
+                        )
+                        .simultaneousGesture(magnificationGesture)
                     }
-                    .simultaneousGesture(magnificationGesture)
+                    .overlay(alignment: .bottomTrailing) {
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                proxy.scrollTo(currentTimeAnchorID, anchor: .center)
+                            }
+                        } label: {
+                            Image(systemName: "clock.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color.white)
+                        }
+                        .padding(10)
+                        .background(
+                            Circle()
+                                .fill(Color.black)
+                        )
+                        .padding(.trailing, 6)
+                        .padding(.bottom, 6)
+                    }
                 }
-
-                TimelineStockView(
-                    items: viewModel.items,
-                    chipsExpanded: $viewModel.chipsExpanded,
-                    dragItemID: $viewModel.dragItemID,
-                    onAdd: { title, durationMinutes in
-                        viewModel.addStockItem(title: title, durationMinutes: durationMinutes)
-                    },
-                    onMove: { from, to, visibleCount in
-                        viewModel.moveChips(from: from, to: to, visibleCount: visibleCount)
-                    },
-                    onDelete: { id in
-                        viewModel.deleteItem(id: id)
-                    }
-                )
             }
-//            .padding(.top, topPadding)
             .padding(.horizontal, viewModel.timelinePadding)
             .padding(.bottom, 40)
-            .frame(height: clampedHeight)
             .frame(maxWidth: .infinity)
             .background(AppColors.background, in: sheetShape)
-            .environment(\.colorScheme, .light)
+//            .environment(\.colorScheme, .light)
             .clipShape(sheetShape)
-            .shadow(color: .black.opacity(0.12), radius: 20, x: 0, y: -6)
+            .shadow(color: AppColors.shadow.opacity(0.2), radius: 10, x: 0, y: -6)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.chipsExpanded)
             .animation(.spring(response: 0.28, dampingFraction: 0.9), value: sheetHeight)
-            .onAppear {
-                if sheetHeight == 0 {
-                    sheetHeight = clampedHeight
-                }
-            }
             .onChange(of: viewModel.chipsExpanded) { _, isExpanded in
-                let target = isExpanded ? expandedHeight : collapsedHeight
-                sheetHeight = clampedSheetHeight(target, in: available)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
@@ -198,9 +195,7 @@ struct WhiteSheetView: View {
                         isEditing: viewModel.editMode.isEditing,
                         showTimeRange: showTimeRange,
                         onEnterEdit: {
-                            if !viewModel.editMode.isEditing {
-                                viewModel.editMode = .active
-                            }
+                            viewModel.editMode = viewModel.editMode.isEditing ? .inactive : .active
                         },
                         onMovePreview: { deltaY in
                             viewModel.updateMovePreview(item: item, deltaY: deltaY)
@@ -218,8 +213,9 @@ struct WhiteSheetView: View {
                             viewModel.deleteItem(id: item.id)
                         }
                     )
+                    .padding(.trailing, 7)
                     .frame(
-                        width: itemWidth,
+                        width: .infinity,
                         height: itemHeight
                     )
                     .offset(x: 0, y: viewModel.yOffset(for: startMinutes))
@@ -232,11 +228,14 @@ struct WhiteSheetView: View {
                     item: preview,
                     showTimeRange: previewHeight >= showTimeThreshold
                 )
+                .padding(.trailing, 7)
                 .frame(
-                    width: itemWidth,
+                    width: .infinity,
                     height: previewHeight
                 )
                 .offset(x: 0, y: viewModel.yOffset(for: preview.startMinutes ?? 0))
+                .zIndex(0)
+                .allowsHitTesting(false)
             }
 
             if let preview = viewModel.movePreview, isSameDay(preview.dropDate, date) {
@@ -245,11 +244,14 @@ struct WhiteSheetView: View {
                     item: preview,
                     showTimeRange: previewHeight >= showTimeThreshold
                 )
+                .padding(.trailing, 7)
                 .frame(
-                    width: itemWidth,
+                    width: .infinity,
                     height: previewHeight
                 )
                 .offset(x: 0, y: viewModel.yOffset(for: preview.startMinutes ?? 0))
+                .zIndex(0)
+                .allowsHitTesting(false)
             }
 
             if let preview = viewModel.resizePreview, isSameDay(preview.dropDate, date) {
@@ -263,9 +265,15 @@ struct WhiteSheetView: View {
                     height: previewHeight
                 )
                 .offset(x: 0, y: viewModel.yOffset(for: preview.startMinutes ?? 0))
+                .zIndex(0)
+                .allowsHitTesting(false)
             }
 
             if Calendar.current.isDate(date, inSameDayAs: Date()) {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .offset(x: 0, y: viewModel.yOffset(for: viewModel.minutesSinceMidnight(date: Date())))
+                    .id(currentTimeAnchorID)
                 currentTimeLine(width: width)
             }
         }
@@ -301,6 +309,7 @@ struct WhiteSheetView: View {
                 Rectangle()
                     .fill(Color.red.opacity(0.8))
                     .frame(width: width, height: 2)
+                    .offset(y: -10)
                 Text(viewModel.currentTimeText(date: context.date))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.red)
@@ -308,7 +317,7 @@ struct WhiteSheetView: View {
                     .padding(.vertical, 2)
                     .background(Color(.systemBackground).opacity(0.9))
                     .cornerRadius(4)
-                    .offset(x: 4, y: -10)
+                    .offset(x: 4, y: -20)
             }
             .offset(y: y)
         }
@@ -317,13 +326,13 @@ struct WhiteSheetView: View {
     private func timelineGrid(width: CGFloat, height: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             Rectangle()
-                .fill(AppColors.background)
+                .fill(Color.white.opacity(0.1))
                 .frame(width: width, height: height)
 
             RoundedRectangle(cornerRadius: 30)
                 .fill(Color.black.opacity(0.1))
                 .frame(width: 1, height: height)
-                .offset(x: 3)
+                .offset(x: 9)
 
             ForEach(0...24, id: \.self) { hour in
                 Rectangle()
@@ -332,7 +341,7 @@ struct WhiteSheetView: View {
                     .offset(y: CGFloat(hour) * viewModel.hourHeight * viewModel.zoomScale)
             }
         }
-        .cornerRadius(8)
+//        .cornerRadius(8)
     }
 
     private func isSameDay(_ lhs: Date?, _ rhs: Date) -> Bool {
@@ -343,7 +352,7 @@ struct WhiteSheetView: View {
 
 #Preview("timeline with items") {
     TimelineScreen(items: [
-        TimelineItem(title: "Wake up", durationMinutes: 15, startMinutes: 2 * 60, dropDate: Date()),
+        TimelineItem(title: "Wake up", durationMinutes: 15, startMinutes: 11 * 60, dropDate: Date()),
         TimelineItem(title: "Workout", durationMinutes: 60, startMinutes: 2 * 60 + 45, dropDate: Date()),
         TimelineItem(title: "Breakfast", durationMinutes: 30, startMinutes: 4 * 60, dropDate: Date()),
         TimelineItem(title: "Study", durationMinutes: 120, startMinutes: 5 * 60, dropDate: Date())

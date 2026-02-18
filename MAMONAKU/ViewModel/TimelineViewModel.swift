@@ -28,17 +28,24 @@ class TimelineViewModel: ObservableObject {
 
     private let minDurationStep: Int = 15
     private var activity: Activity<MAMONAKULiveActivityAttributes>?
+    private var calendarSyncTimer: AnyCancellable?
 
-    init(repository: TimelineRepositoryProtocol = TimelineRepository()) {
+    init(
+        repository: TimelineRepositoryProtocol = TimelineRepository(),
+        initialItems: [TimelineItem]? = nil,
+        enablePolling: Bool = true
+    ) {
         self.repository = repository
-        let stored = repository.fetchItems()
-        if stored.isEmpty {
-            repository.saveItems(items)
+        if let initialItems {
+            items = initialItems
         } else {
-            items = stored
+            bootstrapItems()
+        }
+        if enablePolling {
+            startCalendarSyncPolling()
         }
     }
-
+    
     func addItem(item: TimelineItem, dropY: CGFloat, on date: Date) {
         let start = startMinutesForDrop(duration: item.durationMinutes, dropY: dropY)
         guard !isOverlapping(start: start, duration: item.durationMinutes, excluding: item.id, on: date) else { return }
@@ -57,22 +64,6 @@ class TimelineViewModel: ObservableObject {
         persistItems()
     }
 
-    func addOneMinuteLaterItem() {
-        let nowSeconds = secondsSinceMidnight(date: Date())
-        let startMinutes = clampStart(start: (nowSeconds / 60) + 1, duration: 30)
-        let title = "1分後(30分)"
-        guard !isOverlapping(start: startMinutes, duration: 30, excluding: nil, on: selectedDate) else { return }
-        items.append(
-            TimelineItem(
-                title: title,
-                durationMinutes: 30,
-                startMinutes: startMinutes,
-                dropDate: selectedDropDate(for: selectedDate)
-            )
-        )
-        persistItems()
-    }
-
     func addStockItem(title: String, durationMinutes: Int) {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return }
@@ -85,7 +76,9 @@ class TimelineViewModel: ObservableObject {
         persistItems()
     }
 
+    // MARK: Move - アイテムを置いた後の移動
     func updateMovePreview(item: TimelineItem, deltaY: CGFloat) {
+        print("updateMovePreview")
         guard let start = startMinutesForMove(item: item, deltaY: deltaY) else { return }
         let baseDate = item.dropDate ?? selectedDate
         let preview = TimelineItem(
@@ -99,6 +92,7 @@ class TimelineViewModel: ObservableObject {
     }
 
     func commitMove(item: TimelineItem, deltaY: CGFloat) {
+        print("commitMove")
         defer {
             movePreview = nil
             movingItemID = nil
@@ -112,7 +106,9 @@ class TimelineViewModel: ObservableObject {
         persistItems()
     }
 
+    // MARK: Resize - アイテムの時間変更
     func updateResizePreview(item: TimelineItem, deltaY: CGFloat) {
+        print("updateResizePreview")
         guard let startMinutes = item.startMinutes else { return }
         let duration = durationForResize(item: item, deltaY: deltaY)
         let baseDate = item.dropDate ?? selectedDate
@@ -126,6 +122,7 @@ class TimelineViewModel: ObservableObject {
     }
 
     func commitResize(item: TimelineItem, deltaY: CGFloat) {
+        print("commitResize")
         defer {
             resizePreview = nil
             resizingItemID = nil
@@ -138,13 +135,10 @@ class TimelineViewModel: ObservableObject {
         items[index].durationMinutes = duration
         persistItems()
     }
-
-    func deleteItem(id: UUID) {
-        items.removeAll { $0.id == id }
-        persistItems()
-    }
-
+    
+    // MARK: Resize - アイテムをストックから置く時
     func updatePreview(item: TimelineItem, dropY: CGFloat, on date: Date) {
+        print("updatePreview")
         let start = startMinutesForDrop(duration: item.durationMinutes, dropY: dropY)
         dropPreview = TimelineItem(
             id: item.id,
@@ -155,19 +149,24 @@ class TimelineViewModel: ObservableObject {
         )
     }
 
-    func moveChips(from: IndexSet, to: Int, visibleCount: Int) {
-        let clampedTo = min(to, visibleCount)
-        var visibleIndices = Array(0..<visibleCount)
-        visibleIndices.move(fromOffsets: from, toOffset: clampedTo)
-
-        var new = items
-        for (newIndex, oldIndex) in visibleIndices.enumerated() {
-            new[newIndex] = items[oldIndex]
-        }
-        items = new
+    // MARK: ストック内のアイテム移動
+    func moveTaskItems(from: IndexSet, to: Int) {
+        print("moveTaskItems")
+        var tasks = items.filter { $0.dropDate == nil }
+        let scheduled = items.filter { $0.dropDate != nil }
+        let clampedTo = min(to, tasks.count)
+        tasks.move(fromOffsets: from, toOffset: clampedTo)
+        items = tasks + scheduled
         persistItems()
     }
-
+    
+    // MARK: 削除
+    func deleteItem(id: UUID) {
+        repository.deleteItemAndEvent(id: id)
+        items = repository.fetchItems()
+    }
+    
+    // MARK: その他
     var itemsForSelectedDate: [TimelineItem] {
         items(for: selectedDate)
     }
@@ -304,6 +303,30 @@ class TimelineViewModel: ObservableObject {
     private func selectedDropDate(for date: Date) -> Date {
         Calendar.current.startOfDay(for: date)
     }
+    
+    private func bootstrapItems() {
+        let stored = repository.fetchItems()
+        if stored.isEmpty {
+            repository.saveItems(items)
+        } else {
+            items = stored
+        }
+    }
+
+    private func startCalendarSyncPolling() {
+        calendarSyncTimer = Timer
+            .publish(every: 10, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.refreshItemsFromRepository()
+            }
+    }
+
+    private func refreshItemsFromRepository() {
+        let stored = repository.fetchItems()
+        guard stored != items else { return }
+        items = stored
+    }
 
     private func snap(minutes: Int, step: Int) -> Int {
         let remainder = minutes % step
@@ -345,3 +368,4 @@ extension TimelineViewModel {
         }
     }
 }
+

@@ -23,22 +23,12 @@ struct MAMONAKULiveActivityLiveActivity: Widget {
     var body: some WidgetConfiguration{
         ActivityConfiguration(for: MAMONAKULiveActivityAttributes.self) { context in
             // Lock screen/banner UI goes here
-            VStack {
-                Text("次の予定まで")
-                    .font(.caption)
-                if let startDate = context.state.nextStartDate {
-                    CountdownText(targetDate: startDate)
-                        .font(.headline.monospacedDigit())
-                    Text("\(context.state.nextTitle) \(startDate, style: .time)")
-                        .font(.caption2)
-                } else {
-                    Text("予定なし")
-                        .font(.headline)
-                }
-            }
-            .activityBackgroundTint(Color.black)
-            .activitySystemActionForegroundColor(Color.white)
-
+            CountdownHeaderCard(
+                nextTitle: context.state.nextTitle,
+                nextStartDate: context.state.nextStartDate
+            )
+            .environment(\.colorScheme, .light)
+            
         } dynamicIsland: { context in
             DynamicIsland {
                 // Expanded UI goes here.  Compose the expanded UI through
@@ -95,6 +85,110 @@ private struct CountdownText: View {
     }
 }
 
+private struct CountdownHeaderCard: View {
+    let nextTitle: String
+    let nextStartDate: Date?
+
+    private var remainingSeconds: Int? {
+        guard let nextStartDate else { return nil }
+        return max(0, Int(nextStartDate.timeIntervalSinceNow))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Next event in…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let nextStartDate {
+                        CountdownText(targetDate: nextStartDate)
+                            .font(.custom("kohinoorGujarati-Bold", size: 36))
+                            .foregroundColor(AppColors.systemBackground)
+                    } else {
+                        Text("NO PLAN")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                            .foregroundColor(AppColors.systemBackground)
+                    }
+                }
+
+                if let nextStartDate {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(nextStartDate, style: .time)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(AppColors.systemBackground)
+                        Text(nextTitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.black.opacity(0.06))
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+
+            if let seconds = remainingSeconds, seconds <= 3600 {
+                CountdownProgressBar(secondsRemaining: seconds)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.systemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+private struct CountdownProgressBar: View {
+    let secondsRemaining: Int
+
+    private var clampedSeconds: Int {
+        max(0, min(3600, secondsRemaining))
+    }
+
+    private var progress: CGFloat {
+        1.0 - (CGFloat(clampedSeconds) / 3600.0)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.black.opacity(0.08))
+                Capsule()
+                    .foregroundColor(AppColors.systemBackground)
+                    .frame(width: max(6, width * progress))
+                HStack(spacing: 0) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        Circle()
+                            .fill(Color.black)
+                            .frame(width: 5, height: 5)
+                            .opacity(0.15)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+        }
+        .frame(height: 10)
+        .frame(maxWidth: .infinity)
+    }
+}
+
 extension MAMONAKULiveActivityAttributes {
     fileprivate static var preview: MAMONAKULiveActivityAttributes {
         MAMONAKULiveActivityAttributes(name: "World")
@@ -104,7 +198,7 @@ extension MAMONAKULiveActivityAttributes {
 extension MAMONAKULiveActivityAttributes.ContentState {
     fileprivate static var upcoming: MAMONAKULiveActivityAttributes.ContentState {
         MAMONAKULiveActivityAttributes.ContentState(
-            nextTitle: "30分",
+            nextTitle: "Wake up",
             nextStartDate: Date().addingTimeInterval(25 * 60)
         )
      }

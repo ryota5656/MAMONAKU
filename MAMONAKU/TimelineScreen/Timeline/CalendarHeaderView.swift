@@ -12,24 +12,24 @@ struct CalendarHeaderView: View {
 
         VStack(spacing: 8) {
             HStack() {
-//                HStack(spacing: 6) {
-//                    Text(weekdaySymbol.prefix(3).uppercased())
-//                        .font(.system(size: 32, weight: .bold))
-//                    Circle()
-//                        .fill(Color.red)
-//                        .frame(width: 8, height: 8)
-//                        .offset(y: -4)
-//                }
+                HStack(spacing: 6) {
+                    Text(weekdaySymbol.prefix(3).uppercased())
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                        .offset(y: -4)
+                }
                 Spacer()
                 Text(dateText)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.trailing)
             }
-            .padding(.trailing, 20)
-            .padding(.top, 8)
+            .padding(.horizontal, 10)
+            .padding(.top, 10)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 6) {
                 ForEach(weekDates, id: \.self) { date in
                     let isSelected = cal.isDate(date, inSameDayAs: selectedDate)
                     Button {
@@ -46,13 +46,13 @@ struct CalendarHeaderView: View {
                             Text("\(cal.component(.day, from: date))")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(isSelected ? .primary : .secondary)
-                                .frame(width: 26)
+                                .frame(width: 24)
                             Text(shortWeekdaySymbol(for: date))
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundColor(.secondary)
                         }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 8)
                         .background(
                             RoundedRectangle(cornerRadius: 15, style: .continuous)
                                 .stroke(isSelected ? Color.secondary.opacity(0.4) : .clear, lineWidth: 1)
@@ -61,13 +61,14 @@ struct CalendarHeaderView: View {
                     .buttonStyle(.plain)
                 }
             }
+            
         }
     }
 
     private func dateText(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMMMd yyyy"
-//        formatter.dateFormat = "MMMM d\nyyyy"
+//        formatter.dateFormat = "MMMMd yyyy"
+        formatter.dateFormat = "MMMM d\nyyyy"
         return formatter.string(from: date)
     }
 
@@ -93,4 +94,8 @@ struct CalendarHeaderView: View {
     CalendarHeaderView(selectedDate: $selectedDate, isTwoDayView: $isTwoDayView)
         .padding()
         .background(Color(.systemBackground))
+}
+
+#Preview{
+    ContentView()
 }
