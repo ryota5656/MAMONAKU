@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct TimelineScreen: View {
     @StateObject private var viewModel = TimelineViewModel()
@@ -11,6 +12,9 @@ struct TimelineScreen: View {
     @State private var isTaskSheetDraggable = true
     @State private var taskSheetDetent: PresentationDetent = .fraction(0.45)
     @State private var headerHeight: CGFloat = 0
+    @State private var isRadialMenuVisible = false
+    @State private var radialSelection: RadialAction? = nil
+    @State private var lastHapticSelection: RadialAction? = nil
 
     init() {
         _viewModel = StateObject(wrappedValue: TimelineViewModel())
@@ -95,12 +99,53 @@ struct TimelineScreen: View {
                     .padding(.bottom, 20)
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    Button {
-                        isTaskSheetPresented = true
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 35, weight: .bold))
-                            .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                    ZStack {
+                        if isRadialMenuVisible {
+                            radialMenu
+                        }
+
+                        ZStack {
+                            Circle()
+                                .foregroundStyle(Color.primary.opacity(0.8))
+                            Image(systemName: "plus")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(Color.white)
+                                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        }
+                        .frame(width: 35, height: 35)
+                        .contentShape(Circle())
+                        .onTapGesture {
+                            isTaskSheetPresented = true
+                        }
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    if !isRadialMenuVisible {
+                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                                            isRadialMenuVisible = true
+                                            radialSelection = nil
+                                        }
+                                    }
+                                    let selection = radialAction(at: value.location, in: CGSize(width: 52, height: 52))
+                                    radialSelection = selection
+                                    if selection != nil, selection != lastHapticSelection {
+                                        let generator = UIImpactFeedbackGenerator(style: .light)
+                                        generator.prepare()
+                                        generator.impactOccurred()
+                                        lastHapticSelection = selection
+                                    }
+                                }
+                                .onEnded { _ in
+                                    if isRadialMenuVisible, let selection = radialSelection {
+                                        trigger(action: selection)
+                                    }
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                                        isRadialMenuVisible = false
+                                        radialSelection = nil
+                                        lastHapticSelection = nil
+                                    }
+                                }
+                        )
                     }
                     .padding(.trailing, 30)
                     .padding(.bottom, 20)
@@ -132,6 +177,76 @@ private struct HeaderHeightKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+private enum RadialAction: CaseIterable {
+    case actionA
+    case actionB
+    case actionC
+
+    var icon: String {
+        switch self {
+        case .actionA: return "square.and.pencil"
+        case .actionB: return "clock"
+        case .actionC: return "flag"
+        }
+    }
+
+    var offset: CGSize {
+        switch self {
+        case .actionA: return CGSize(width: -70, height: 0)
+        case .actionB: return CGSize(width: 0, height: -70)
+        case .actionC: return CGSize(width: -50, height: -50)
+        }
+    }
+}
+
+private extension TimelineScreen {
+    var radialMenu: some View {
+        ZStack {
+            ForEach(RadialAction.allCases, id: \.self) { action in
+                Circle()
+                    .fill(radialSelection == action ? Color.black : Color.black.opacity(0.85))
+                    .frame(width: 40, height: 40)
+                    .overlay(
+                        Image(systemName: action.icon)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                    )
+                    .onTapGesture {
+                        trigger(action: action)
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                            isRadialMenuVisible = false
+                            radialSelection = nil
+                        }
+                    }
+                    .offset(action.offset)
+            }
+        }
+        .transition(.scale.combined(with: .opacity))
+    }
+
+    func radialAction(at location: CGPoint, in size: CGSize) -> RadialAction? {
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let threshold: CGFloat = 22
+        for action in RadialAction.allCases {
+            let target = CGPoint(x: center.x + action.offset.width, y: center.y + action.offset.height)
+            let dx = location.x - target.x
+            let dy = location.y - target.y
+            if sqrt(dx * dx + dy * dy) <= threshold {
+                return action
+            }
+        }
+        return nil
+    }
+
+    func trigger(action: RadialAction) {
+        // Placeholder: implement specific actions later.
+        switch action {
+        case .actionA, .actionB, .actionC:
+            break
+        }
     }
 }
 

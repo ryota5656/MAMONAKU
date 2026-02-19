@@ -21,16 +21,11 @@ struct ScheduleItemView: View {
                 RoundedRectangle(cornerRadius: 30)
                     .fill(AppColors.systemBackground)
                     .frame(width: 15)
-                    .overlay(
-                        Image(systemName: "heart.fill")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.white)
-//                            .padding(5)
-//                            .background(
-//                                Circle()
-//                                    .fill(Color.black)
-//                            )
-                    )
+//                    .overlay(
+//                        Image(systemName: "heart.fill")
+//                            .font(.system(size: 10, weight: .bold))
+//                            .foregroundStyle(.white)
+//                    )
 
             VStack(alignment: .leading, spacing: 4) {
                 if showTimeRange, item.startMinutes != nil {

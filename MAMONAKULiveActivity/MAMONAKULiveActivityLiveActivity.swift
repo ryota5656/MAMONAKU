@@ -104,13 +104,8 @@ private struct CountdownHeaderCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     if let nextStartDate {
                         CountdownText(targetDate: nextStartDate)
-                            .font(.custom("kohinoorGujarati-Bold", size: 36))
-                            .foregroundColor(AppColors.systemBackground)
-                    } else {
-                        Text("NO PLAN")
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-                            .foregroundColor(AppColors.systemBackground)
+                            .font(.system(size: 30,weight: .heavy, design: .rounded))
+                            .foregroundColor(Color.black.opacity(0.9))
                     }
                 }
 
@@ -202,18 +197,10 @@ extension MAMONAKULiveActivityAttributes.ContentState {
             nextStartDate: Date().addingTimeInterval(25 * 60)
         )
      }
-     
-    fileprivate static var none: MAMONAKULiveActivityAttributes.ContentState {
-        MAMONAKULiveActivityAttributes.ContentState(
-            nextTitle: "予定なし",
-            nextStartDate: nil
-        )
-    }
 }
 
 #Preview("Notification", as: .content, using: MAMONAKULiveActivityAttributes.preview) {
    MAMONAKULiveActivityLiveActivity()
 } contentStates: {
     MAMONAKULiveActivityAttributes.ContentState.upcoming
-    MAMONAKULiveActivityAttributes.ContentState.none
 }

@@ -34,24 +34,6 @@ struct WhiteSheetView: View {
                         )
                         .simultaneousGesture(magnificationGesture)
                     }
-                    .overlay(alignment: .bottomTrailing) {
-                        Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                proxy.scrollTo(currentTimeAnchorID, anchor: .center)
-                            }
-                        } label: {
-                            Image(systemName: "clock.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(Color.white)
-                        }
-                        .padding(10)
-                        .background(
-                            Circle()
-                                .fill(Color.black)
-                        )
-                        .padding(.trailing, 6)
-                        .padding(.bottom, 6)
-                    }
                 }
             }
             .padding(.horizontal, viewModel.timelinePadding)
@@ -60,7 +42,7 @@ struct WhiteSheetView: View {
             .background(AppColors.background, in: sheetShape)
 //            .environment(\.colorScheme, .light)
             .clipShape(sheetShape)
-            .shadow(color: AppColors.shadow.opacity(0.2), radius: 10, x: 0, y: -6)
+            .shadow(color: AppColors.shadow.opacity(0.5), radius: 15, x: 0, y: -6)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.chipsExpanded)
             .animation(.spring(response: 0.28, dampingFraction: 0.9), value: sheetHeight)
             .onChange(of: viewModel.chipsExpanded) { _, isExpanded in
@@ -332,7 +314,7 @@ struct WhiteSheetView: View {
             RoundedRectangle(cornerRadius: 30)
                 .fill(Color.black.opacity(0.1))
                 .frame(width: 1, height: height)
-                .offset(x: 9)
+                .offset(x: 7)
 
             ForEach(0...24, id: \.self) { hour in
                 Rectangle()

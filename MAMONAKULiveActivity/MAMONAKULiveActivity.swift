@@ -122,19 +122,21 @@ private struct CountdownHeaderCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("次の予定まで")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(nextStartDate != nil ? "Next event in..." : "Today's Status")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.6))
 
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     if let nextStartDate {
                         CountdownText(targetDate: nextStartDate)
-                            .font(.headline.monospacedDigit())
+                            .font(.system(size: 30, weight: .heavy, design: .rounded))
+                            .foregroundColor(.black)
                     } else {
-                        Text("予定なし")
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
+                        Text("NO PLAN")
+                            .font(.system(size: 24, weight: .heavy, design: .rounded))
+                            .foregroundStyle(Color.black.opacity(0.8))
+                            .rotationEffect(.degrees(-4))
                     }
                 }
 
@@ -162,7 +164,9 @@ private struct CountdownHeaderCard: View {
                 CountdownProgressBar(secondsRemaining: seconds)
             }
         }
-//        .padding(14)
+//        .padding(.top, 16)
+//        .padding(.bottom, 14)
+//        .padding(.horizontal, 16)
 //        .background(
 //            RoundedRectangle(cornerRadius: 16, style: .continuous)
 //                .fill(Color(.systemBackground))
