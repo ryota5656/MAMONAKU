@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct CalendarHeaderView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
     @Binding var selectedDate: Date
     @Binding var isTwoDayView: Bool
 
@@ -15,8 +17,9 @@ struct CalendarHeaderView: View {
                 HStack(spacing: 6) {
                     Text(weekdaySymbol.prefix(3).uppercased())
                         .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundColor(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
                     Circle()
-                        .fill(Color.red)
+                        .fill(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
                         .frame(width: 8, height: 8)
                         .offset(y: -4)
                 }
@@ -29,7 +32,7 @@ struct CalendarHeaderView: View {
             .padding(.horizontal, 10)
             .padding(.top, 10)
 
-            HStack(spacing: 4) {
+            HStack(spacing: 0) {
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         selectedDate = addDays(-7, to: selectedDate)
@@ -40,10 +43,6 @@ struct CalendarHeaderView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.secondary)
                         .frame(width: 24, height: 24)
-                        .background(
-                            Circle()
-                                .fill(Color.black.opacity(0.06))
-                        )
                 }
                 .buttonStyle(.plain)
 
@@ -63,11 +62,11 @@ struct CalendarHeaderView: View {
                         VStack(spacing: 4) {
                             Text("\(cal.component(.day, from: date))")
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(isToday ? .red : (isSelected ? .primary : .secondary))
+                                .foregroundColor(isToday ? AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme) : (isSelected ? .primary : .secondary))
                                 .frame(width: 24)
                             Text(shortWeekdaySymbol(for: date))
                                 .font(.system(size: 6, weight: .semibold))
-                                .foregroundColor(isToday ? .red : (isSelected ? .primary : .secondary))
+                                .foregroundColor(isToday ? AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme) : (isSelected ? .primary : .secondary))
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 8)
@@ -89,10 +88,6 @@ struct CalendarHeaderView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.secondary)
                         .frame(width: 24, height: 24)
-                        .background(
-                            Circle()
-                                .fill(Color.black.opacity(0.06))
-                        )
                 }
                 .buttonStyle(.plain)
             }
@@ -133,8 +128,10 @@ struct CalendarHeaderView: View {
     CalendarHeaderView(selectedDate: $selectedDate, isTwoDayView: $isTwoDayView)
         .padding()
         .background(Color(.systemBackground))
+        .environmentObject(ThemeManager())
 }
 
 #Preview{
     ContentView()
+        .environmentObject(ThemeManager())
 }

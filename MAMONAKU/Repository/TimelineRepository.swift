@@ -6,7 +6,6 @@
 //
 import Foundation
 import EventKit
-import WidgetKit
 import RealmSwift
 
 protocol TimelineRepositoryProtocol: AnyObject {
@@ -22,6 +21,8 @@ protocol TimelineRepositoryProtocol: AnyObject {
 final class TimelineRepository: TimelineRepositoryProtocol {
     private let storageKey = "timeline_items"
     private let nextItemKey = "timeline_next_item"
+    private let calendarSyncEnabledKey = "calendar_sync_enabled"
+    private let subscriptionStateKey = "subscription_is_subscribed"
     private let appGroupID = "group.sairyo.MAMONAKU"
     private let userDefaults: UserDefaults
     private let realmConfig: Realm.Configuration
@@ -45,10 +46,16 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         }
         let config = Realm.Configuration(
             fileURL: realmURL,
-            schemaVersion: 2,
+            schemaVersion: 4,
             migrationBlock: { _, oldSchemaVersion in
                 if oldSchemaVersion < 2 {
                     // Automatic migration is sufficient for added properties.
+                }
+                if oldSchemaVersion < 3 {
+                    // isCompleted added; default false is applied by Realm.
+                }
+                if oldSchemaVersion < 4 {
+                    // priority added; default 1 (medium) is applied by Realm.
                 }
             }
         )
@@ -102,7 +109,6 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         syncCalendarFromRealm()
         persistItemsToUserDefaults(items)
         persistNextItemSummary(fetchNextItemSummary(referenceDate: Date()))
-        WidgetCenter.shared.reloadTimelines(ofKind: "MAMONAKULiveActivity")
     }
 
     func addItem(_ item: TimelineItem) {
@@ -152,7 +158,6 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         let items = fetchItems()
         persistItemsToUserDefaults(items)
         persistNextItemSummary(fetchNextItemSummary(referenceDate: Date()))
-        WidgetCenter.shared.reloadTimelines(ofKind: "MAMONAKULiveActivity")
     }
 
     func fetchNextItemSummary(referenceDate: Date = Date()) -> TimelineNextItemSummary? {
@@ -209,6 +214,7 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     }
 
     private func requestCalendarAccessIfNeeded() {
+        guard isCalendarSyncEnabled else { return }
         let status = EKEventStore.authorizationStatus(for: .event)
         if status == .authorized || status == .fullAccess {
             calendarSyncQueue.async { [weak self] in
@@ -228,6 +234,7 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     }
 
     private func startCalendarChangeObservation() {
+        guard isCalendarSyncEnabled else { return }
         calendarObserver = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged,
             object: eventStore,
@@ -240,6 +247,7 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     }
 
     private func startCalendarSyncTimer() {
+        guard isCalendarSyncEnabled else { return }
         let timer = DispatchSource.makeTimerSource(queue: calendarSyncQueue)
         timer.schedule(deadline: .now() + 10, repeating: 10)
         timer.setEventHandler { [weak self] in
@@ -250,6 +258,7 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     }
 
     private func syncRealmFromCalendar() {
+        guard isCalendarSyncEnabled else { return }
         let status = EKEventStore.authorizationStatus(for: .event)
         guard status == .authorized || status == .fullAccess else { return }
         guard let calendar = eventStore.defaultCalendarForNewEvents else { return }
@@ -300,10 +309,10 @@ final class TimelineRepository: TimelineRepositoryProtocol {
             return
         }
         persistNextItemSummary(fetchNextItemSummary(referenceDate: Date()))
-        WidgetCenter.shared.reloadTimelines(ofKind: "MAMONAKULiveActivity")
     }
 
     private func syncCalendarFromRealm() {
+        guard isCalendarSyncEnabled else { return }
         let status = EKEventStore.authorizationStatus(for: .event)
         guard status == .authorized || status == .fullAccess else { return }
         guard let calendar = eventStore.defaultCalendarForNewEvents else { return }
@@ -354,6 +363,7 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     }
 
     private func deleteEvents(identifiers: [String]) {
+        guard isCalendarSyncEnabled else { return }
         let status = EKEventStore.authorizationStatus(for: .event)
         guard status == .authorized || status == .fullAccess else { return }
         for identifier in identifiers {
@@ -379,6 +389,15 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         return (h * 60) + m
     }
 
+    /// 標準カレンダー同期はサブスクリプション加入時のみ有効
+    private var isCalendarSyncEnabled: Bool {
+        let syncPreferred = userDefaults.object(forKey: calendarSyncEnabledKey) == nil
+            ? true
+            : userDefaults.bool(forKey: calendarSyncEnabledKey)
+        let subscribed = (userDefaults.object(forKey: subscriptionStateKey) as? Bool) ?? false
+        return syncPreferred && subscribed
+    }
+
     private func nextItemSummary(after date: Date, items: Results<RealmTimelineItem>) -> TimelineNextItemSummary? {
         let nowSeconds = secondsSinceMidnight(date: date)
         let startMinutes = Int(ceil(Double(nowSeconds) / 60.0))
@@ -391,7 +410,7 @@ final class TimelineRepository: TimelineRepositoryProtocol {
             return (item, minutes)
         }
         guard let next = candidates
-            .filter({ $0.1 >= startMinutes })
+            .filter({ $0.1 > startMinutes })
             .min(by: { $0.1 < $1.1 })?.0
         else {
             return nil
@@ -430,6 +449,8 @@ final class RealmTimelineItem: Object {
     @Persisted var dropDate: Date?
     @Persisted var sortIndex: Int = 0
     @Persisted var eventIdentifier: String?
+    @Persisted var isCompleted: Bool = false
+    @Persisted var priority: Int = 1
 
     convenience init(item: TimelineItem, sortIndex: Int, eventIdentifier: String? = nil) {
         self.init()
@@ -440,6 +461,8 @@ final class RealmTimelineItem: Object {
         self.dropDate = item.dropDate
         self.sortIndex = sortIndex
         self.eventIdentifier = eventIdentifier
+        self.isCompleted = item.isCompleted
+        self.priority = item.priority.rawValue
     }
 
     func toTimelineItem() -> TimelineItem {
@@ -448,7 +471,9 @@ final class RealmTimelineItem: Object {
             title: title,
             durationMinutes: durationMinutes,
             startMinutes: startMinutes,
-            dropDate: dropDate
+            dropDate: dropDate,
+            isCompleted: isCompleted,
+            priority: TaskPriority(rawValue: priority) ?? .medium
         )
     }
 }

@@ -82,16 +82,25 @@ struct MAMONAKULiveActivity: Widget {
 
 struct MAMONAKULiveActivityEntryView: View {
     var entry: Provider.Entry
+    @Environment(\.widgetFamily) private var widgetFamily
 
     var body: some View {
+        let theme = AppPalette.loadFromAppGroup()
         CountdownHeaderCard(
             nextTitle: entry.nextTitle,
-            nextStartDate: entry.nextStartDate
+            nextStartDate: entry.nextStartDate,
+            isCompact: widgetFamily == .systemSmall,
+            theme: theme
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .environment(\.colorScheme, .light)
-
     }
+}
+
+#Preview(as: .systemSmall) {
+    MAMONAKULiveActivity()
+} timeline: {
+    CountdownEntry(date: .now, nextTitle: "作業", nextStartDate: Date().addingTimeInterval(20 * 60))
+    CountdownEntry(date: .now, nextTitle: nil, nextStartDate: nil)
 }
 
 #Preview(as: .systemMedium) {
@@ -105,81 +114,83 @@ private struct CountdownText: View {
     let targetDate: Date
 
     var body: some View {
-        let now = Date()
-        let end = max(now, targetDate)
-        return Text(timerInterval: now...end, pauseTime: nil, countsDown: true)
+        if targetDate > .now {
+            Text(targetDate, style: .timer)
+        } else {
+            Text("0:00")
+        }
     }
 }
 
 private struct CountdownHeaderCard: View {
     let nextTitle: String?
     let nextStartDate: Date?
+    var isCompact: Bool = false
+    let theme: AppPalette
+    @Environment(\.colorScheme) private var colorScheme
 
-    private var remainingSeconds: Int? {
-        guard let nextStartDate else { return nil }
-        return max(0, Int(nextStartDate.timeIntervalSinceNow))
+    private var displayScheme: ColorScheme {
+        switch theme {
+        case .light, .pop:
+            return .light
+        case .dark, .elegant:
+            return .dark
+        case .system:
+            return colorScheme
+        @unknown default:
+            return colorScheme
+        }
     }
 
+    private func remainingSeconds(at currentDate: Date) -> Int? {
+        guard let nextStartDate else { return nil }
+        return max(0, Int(nextStartDate.timeIntervalSince(currentDate)))
+    }
+
+    private var spacing: CGFloat { isCompact ? 4 : 10 }
+    private var titleFont: Font { .system(size: isCompact ? 9 : 10, weight: .semibold) }
+    private var countdownFont: Font { .system(size: isCompact ? 20 : 30, weight: .heavy, design: .rounded) }
+    private var noPlanFont: Font { .system(size: isCompact ? 16 : 24, weight: .heavy, design: .rounded) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(nextStartDate != nil ? "Next event in..." : "Today's Status")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.6))
-
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    if let nextStartDate {
-                        CountdownText(targetDate: nextStartDate)
-                            .font(.system(size: 30, weight: .heavy, design: .rounded))
-                            .foregroundColor(.black)
-                    } else {
-                        Text("NO PLAN")
-                            .font(.system(size: 24, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.black.opacity(0.8))
-                            .rotationEffect(.degrees(-4))
-                    }
-                }
-
-                if let nextTitle, let nextStartDate {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(nextStartDate, style: .time)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
-                        Text(nextTitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.black.opacity(0.06))
-                    )
+        let accent = AppColors.accent(palette: theme, environmentScheme: displayScheme)
+        let primary = AppColors.textPrimary(palette: theme, environmentScheme: displayScheme)
+        VStack(alignment: .leading, spacing: spacing) {
+            // 1. タイトル（ラベル + 予定名）
+            VStack(alignment: .leading, spacing: 2) {
+                Text(nextStartDate != nil ? "Next event in..." : "Today's Status")
+                    .font(titleFont)
+                    .foregroundStyle(primary.opacity(0.6))
+                if let nextTitle, !nextTitle.isEmpty {
+                    Text(nextTitle)
+                        .font(.system(size: isCompact ? 11 : 14, weight: .medium))
+                        .foregroundStyle(primary.opacity(0.7))
+                        .lineLimit(isCompact ? 1 : 2)
                 }
             }
 
-            if let seconds = remainingSeconds, seconds <= 3600 {
-                CountdownProgressBar(secondsRemaining: seconds)
+            // 2. 時間（カウントダウン or NO PLAN）
+            if let nextStartDate {
+                CountdownText(targetDate: nextStartDate)
+                    .font(countdownFont)
+                    .foregroundStyle(primary)
+            } else {
+                Text("NO PLAN")
+                    .font(noPlanFont)
+                    .foregroundStyle(primary.opacity(0.8))
+            }
+
+            // 3. プログレスバー
+            if let seconds = remainingSeconds(at: .now), seconds <= 3600 {
+                CountdownProgressBar(secondsRemaining: seconds, accent: accent)
             }
         }
-//        .padding(.top, 16)
-//        .padding(.bottom, 14)
-//        .padding(.horizontal, 16)
-//        .background(
-//            RoundedRectangle(cornerRadius: 16, style: .continuous)
-//                .fill(Color(.systemBackground))
-//        )
-//        .overlay(
-//            RoundedRectangle(cornerRadius: 16, style: .continuous)
-//                .stroke(Color.black.opacity(0.08), lineWidth: 1)
-//        )
     }
 }
 
 private struct CountdownProgressBar: View {
     let secondsRemaining: Int
+    let accent: Color
 
     private var clampedSeconds: Int {
         max(0, min(3600, secondsRemaining))
@@ -194,16 +205,16 @@ private struct CountdownProgressBar: View {
             let width = proxy.size.width
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.black.opacity(0.08))
+                    .fill(Color.primary.opacity(0.08))
                 Capsule()
-                    .fill(Color.black)
+                    .fill(accent)
                     .frame(width: max(6, width * progress))
                 HStack(spacing: 0) {
                     ForEach(0..<5, id: \.self) { _ in
                         Circle()
-                            .fill(Color.black)
+                            .fill(accent)
                             .frame(width: 5, height: 5)
-                            .opacity(0.35)
+                            .opacity(0.25)
                             .frame(maxWidth: .infinity)
                     }
                 }

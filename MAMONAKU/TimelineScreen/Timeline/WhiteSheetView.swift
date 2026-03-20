@@ -1,51 +1,88 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct WhiteSheetView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
     @ObservedObject var viewModel: TimelineViewModel
     @Binding var sheetHeight: CGFloat
     @State private var lastMagnification: CGFloat = 1.0
+    @State private var tabSelection: Date = Calendar.current.startOfDay(for: Date())
+    /// スワイプで配列がずれないよう、TabView の日付範囲の中心を固定する（カレンダーで遠い日を選んだときだけ更新）
+    @State private var datesForTabCenter: Date = Calendar.current.startOfDay(for: Date())
     private let currentTimeAnchorID = "currentTimeAnchor"
+
+    private func startOfDay(_ date: Date) -> Date {
+        Calendar.current.startOfDay(for: date)
+    }
+
+    private func isDateWithinTabWindow(_ date: Date, center: Date) -> Bool {
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: center, to: date).day ?? 0
+        return days >= -14 && days <= 14
+    }
 
     var body: some View {
         GeometryReader { proxy in
             let sheetShape = RoundedRectangle(cornerRadius: 30, style: .continuous)
 
-            VStack(spacing: 16) {
+            VStack(spacing: 10) {
                 CalendarHeaderView(
                     selectedDate: $viewModel.selectedDate,
                     isTwoDayView: $viewModel.isTwoDayView
                 )
                 
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: 0) {
-                            timeColumn
-                            timelineColumn
-                        }
-                        .background(
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if viewModel.editMode.isEditing {
-                                        viewModel.editMode = .inactive
-                                    }
+                TabView(selection: $tabSelection) {
+                    ForEach(datesForTab, id: \.self) { date in
+                        ScrollViewReader { _ in
+                            ScrollView(.vertical, showsIndicators: false) {
+                                HStack(alignment: .top, spacing: 0) {
+                                    timeColumn
+                                    singleDayTimelineColumn(date: date)
                                 }
-                        )
-                        .simultaneousGesture(magnificationGesture)
+                                .padding(.bottom, 80)
+                                .background(
+                                    Color.clear
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            if viewModel.editMode.isEditing {
+                                                viewModel.exitEditMode()
+                                            }
+                                        }
+                                )
+                                .simultaneousGesture(magnificationGesture)
+                            }
+                        }
+                        .tag(date)
                     }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
             .padding(.horizontal, viewModel.timelinePadding)
             .padding(.bottom, 40)
             .frame(maxWidth: .infinity)
-            .background(AppColors.background, in: sheetShape)
-//            .environment(\.colorScheme, .light)
+            .background(AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme), in: sheetShape)
             .clipShape(sheetShape)
-            .shadow(color: AppColors.shadow.opacity(0.5), radius: 15, x: 0, y: -6)
+            .shadow(color: AppColors.shadow(palette: themeManager.theme, environmentScheme: colorScheme), radius: 15, x: 0, y: -6)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.chipsExpanded)
             .animation(.spring(response: 0.28, dampingFraction: 0.9), value: sheetHeight)
             .onChange(of: viewModel.chipsExpanded) { _, isExpanded in
+            }
+            .onAppear {
+                let start = startOfDay(viewModel.selectedDate)
+                tabSelection = start
+                datesForTabCenter = start
+            }
+            .onChange(of: viewModel.selectedDate) { _, newDate in
+                let start = startOfDay(newDate)
+                if !isDateWithinTabWindow(start, center: datesForTabCenter) {
+                    datesForTabCenter = start
+                }
+                if start != tabSelection { tabSelection = start }
+            }
+            .onChange(of: tabSelection) { _, newDate in
+                viewModel.selectedDate = newDate
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
@@ -74,25 +111,6 @@ struct WhiteSheetView: View {
         }
     }
 
-    private var timelineColumn: some View {
-        GeometryReader { geo in
-            let height = viewModel.hourHeight * viewModel.zoomScale * 24
-            let totalWidth = geo.size.width
-            let dates = timelineDates
-            let spacing: CGFloat = 0
-            let columnWidth = (totalWidth - spacing * CGFloat(max(0, dates.count - 1))) / CGFloat(max(1, dates.count))
-
-            HStack(alignment: .top, spacing: spacing) {
-                ForEach(dates, id: \.self) { date in
-                    dayTimelineColumn(date: date, width: columnWidth, height: height)
-                }
-            }
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: dates.count)
-        }
-        .frame(height: viewModel.hourHeight * viewModel.zoomScale * 24)
-        .gesture(timelineSwipeGesture)
-    }
-
     private var magnificationGesture: some Gesture {
         MagnificationGesture()
             .onChanged { value in
@@ -110,80 +128,63 @@ struct WhiteSheetView: View {
         min(max(value, 0.6), 2.0)
     }
 
-    private var timelineSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 30)
-            .onEnded { value in
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                guard abs(horizontal) > abs(vertical), abs(horizontal) > 60 else { return }
-                if horizontal < 0 {
-                    advanceTimeline()
-                } else {
-                    retreatTimeline()
-                }
-            }
-    }
-
-    private func advanceTimeline() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-            if viewModel.isTwoDayView {
-                viewModel.selectedDate = addDays(1, to: viewModel.selectedDate)
-                viewModel.isTwoDayView = false
-            } else {
-                viewModel.isTwoDayView = true
-            }
-        }
-    }
-
-    private func retreatTimeline() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-            if viewModel.isTwoDayView {
-                viewModel.isTwoDayView = false
-            } else {
-                viewModel.selectedDate = addDays(-1, to: viewModel.selectedDate)
-                viewModel.isTwoDayView = true
-            }
-        }
-    }
-
-    private func addDays(_ value: Int, to date: Date) -> Date {
-        Calendar.current.date(byAdding: .day, value: value, to: date) ?? date
-    }
-
-    private var timelineDates: [Date] {
+    private var datesForTab: [Date] {
         let cal = Calendar.current
-        let start = cal.startOfDay(for: viewModel.selectedDate)
-        if viewModel.isTwoDayView {
-            let next = cal.date(byAdding: .day, value: 1, to: start) ?? start
-            return [start, next]
+        let center = datesForTabCenter
+        return (-14...14).compactMap { offset in
+            cal.date(byAdding: .day, value: offset, to: center)
         }
-        return [start]
+    }
+
+    private func singleDayTimelineColumn(date: Date) -> some View {
+        let height = viewModel.hourHeight * viewModel.zoomScale * 24
+        return GeometryReader { geo in
+            dayTimelineColumn(date: date, width: geo.size.width, height: height)
+        }
+        .frame(height: viewModel.hourHeight * viewModel.zoomScale * 24)
     }
 
     private func dayTimelineColumn(date: Date, width: CGFloat, height: CGFloat) -> some View {
         let items = viewModel.items(for: date)
         let itemWidth = max(80, width - (viewModel.timelinePadding * 0.5))
-        let showTimeThreshold: CGFloat = 31
+        let showTimeThreshold: CGFloat = 50
 
         return ZStack(alignment: .topLeading) {
             timelineGrid(width: width, height: height)
 
+            // 背面のタップ層（空き領域タップで編集モード解除 or 仮配置取り消し）
+            Color.primary.opacity(0.001)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if viewModel.pendingPlacement != nil {
+                        viewModel.cancelPendingPlacement()
+                    } else if viewModel.editMode.isEditing {
+                        viewModel.exitEditMode()
+                    }
+                }
+
+            // 長押しでその位置に30分の仮アイテムを開始（編集モード中は無効・タップを背面層に通して編集解除）
+            LongPressLocationView { y in
+                viewModel.startPendingPlacement(date: date, y: y)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(viewModel.pendingPlacement == nil && !viewModel.editMode.isEditing)
+
             ForEach(items) { item in
                 if let startMinutes = item.startMinutes {
                     let itemHeight = viewModel.heightForDuration(item.durationMinutes)
-                    let showTimeRange = itemHeight >= showTimeThreshold
+                    let showTimeRange = itemHeight > showTimeThreshold
                     ScheduleItemView(
                         item: item,
                         isEditing: viewModel.editMode.isEditing,
                         showTimeRange: showTimeRange,
                         onEnterEdit: {
-                            viewModel.editMode = viewModel.editMode.isEditing ? .inactive : .active
-                        },
-                        onMovePreview: { deltaY in
-                            viewModel.updateMovePreview(item: item, deltaY: deltaY)
-                        },
-                        onMoveEnd: { deltaY in
-                            viewModel.commitMove(item: item, deltaY: deltaY)
+                            if viewModel.editMode.isEditing {
+                                viewModel.exitEditMode()
+                            } else {
+                                viewModel.requestEnterEditMode()
+                            }
                         },
                         onResizePreview: { deltaY in
                             viewModel.updateResizePreview(item: item, deltaY: deltaY)
@@ -191,9 +192,14 @@ struct WhiteSheetView: View {
                         onResizeEnd: { deltaY in
                             viewModel.commitResize(item: item, deltaY: deltaY)
                         },
-                        onDelete: {
-                            viewModel.deleteItem(id: item.id)
-                        }
+                        onDragStart: {
+                            viewModel.dragItemID = $0
+                            if !viewModel.isInEditModeExitCooldown() {
+                                viewModel.editMode = .active
+                            }
+                        },
+                        onComplete: nil,
+                        onUncomplete: nil
                     )
                     .padding(.trailing, 7)
                     .frame(
@@ -208,23 +214,7 @@ struct WhiteSheetView: View {
                 let previewHeight = viewModel.heightForDuration(preview.durationMinutes)
                 ScheduleItemPreviewView(
                     item: preview,
-                    showTimeRange: previewHeight >= showTimeThreshold
-                )
-                .padding(.trailing, 7)
-                .frame(
-                    width: .infinity,
-                    height: previewHeight
-                )
-                .offset(x: 0, y: viewModel.yOffset(for: preview.startMinutes ?? 0))
-                .zIndex(0)
-                .allowsHitTesting(false)
-            }
-
-            if let preview = viewModel.movePreview, isSameDay(preview.dropDate, date) {
-                let previewHeight = viewModel.heightForDuration(preview.durationMinutes)
-                ScheduleItemPreviewView(
-                    item: preview,
-                    showTimeRange: previewHeight >= showTimeThreshold
+                    showTimeRange: previewHeight > showTimeThreshold
                 )
                 .padding(.trailing, 7)
                 .frame(
@@ -240,7 +230,7 @@ struct WhiteSheetView: View {
                 let previewHeight = viewModel.heightForDuration(preview.durationMinutes)
                 ScheduleItemPreviewView(
                     item: preview,
-                    showTimeRange: previewHeight >= showTimeThreshold
+                    showTimeRange: previewHeight > showTimeThreshold
                 )
                 .frame(
                     width: itemWidth,
@@ -249,6 +239,20 @@ struct WhiteSheetView: View {
                 .offset(x: 0, y: viewModel.yOffset(for: preview.startMinutes ?? 0))
                 .zIndex(0)
                 .allowsHitTesting(false)
+            }
+
+            if let pending = viewModel.pendingPlacement, Calendar.current.isDate(pending.date, inSameDayAs: date) {
+                PendingPlacementCardView(
+                    onSubmit: { title in
+                        viewModel.commitPendingPlacement(title: title)
+                    },
+                    onCancel: {
+                        viewModel.cancelPendingPlacement()
+                    }
+                )
+                .frame(width: itemWidth, height: viewModel.heightForDuration(30))
+                .offset(x: 0, y: viewModel.yOffset(for: pending.startMinutes))
+                .zIndex(10)
             }
 
             if Calendar.current.isDate(date, inSameDayAs: Date()) {
@@ -276,7 +280,11 @@ struct WhiteSheetView: View {
                 },
                 onDrop: { itemID, location in
                     guard let item = viewModel.items.first(where: { $0.id == itemID }) else { return }
-                    viewModel.addItem(item: item, dropY: location.y, on: date)
+                    if item.dropDate != nil {
+                        viewModel.moveItemTo(item: item, dropY: location.y, on: date)
+                    } else {
+                        viewModel.addItem(item: item, dropY: location.y, on: date)
+                    }
                 }
             )
         )
@@ -289,15 +297,15 @@ struct WhiteSheetView: View {
 
             ZStack(alignment: .leading) {
                 Rectangle()
-                    .fill(Color.red.opacity(0.8))
+                    .fill(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
                     .frame(width: width, height: 2)
                     .offset(y: -10)
                 Text(viewModel.currentTimeText(date: context.date))
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.red)
+                    .foregroundColor(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color(.systemBackground).opacity(0.9))
+                    .background(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
                     .cornerRadius(4)
                     .offset(x: 4, y: -20)
             }
@@ -306,24 +314,20 @@ struct WhiteSheetView: View {
     }
 
     private func timelineGrid(width: CGFloat, height: CGFloat) -> some View {
-        ZStack(alignment: .topLeading) {
+        let gridFill = AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme)
+        let gridLine = AppColors.gridLine(palette: themeManager.theme, environmentScheme: colorScheme)
+        return ZStack(alignment: .topLeading) {
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(gridFill)
                 .frame(width: width, height: height)
-
-            RoundedRectangle(cornerRadius: 30)
-                .fill(Color.black.opacity(0.1))
-                .frame(width: 1, height: height)
-                .offset(x: 7)
 
             ForEach(0...24, id: \.self) { hour in
                 Rectangle()
-                    .fill(Color.black.opacity(0.1))
+                    .fill(gridLine)
                     .frame(width: 10, height: 1)
                     .offset(y: CGFloat(hour) * viewModel.hourHeight * viewModel.zoomScale)
             }
         }
-//        .cornerRadius(8)
     }
 
     private func isSameDay(_ lhs: Date?, _ rhs: Date) -> Bool {
@@ -332,11 +336,91 @@ struct WhiteSheetView: View {
     }
 }
 
+// MARK: - 長押しで位置（Y）を取得（スクロールと併用できるよう UIKit で取得）
+private struct LongPressLocationView: UIViewRepresentable {
+    var onLongPress: (CGFloat) -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView()
+        v.backgroundColor = .clear
+        let longPress = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.didLongPress(_:)))
+        longPress.minimumPressDuration = 0.5
+        longPress.delaysTouchesBegan = false
+        v.addGestureRecognizer(longPress)
+        return v
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.onLongPress = onLongPress
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onLongPress: onLongPress)
+    }
+
+    class Coordinator: NSObject {
+        var onLongPress: (CGFloat) -> Void
+
+        init(onLongPress: @escaping (CGFloat) -> Void) {
+            self.onLongPress = onLongPress
+        }
+
+        @objc func didLongPress(_ g: UILongPressGestureRecognizer) {
+            guard g.state == .began else { return }
+            let y = g.location(in: g.view).y
+            onLongPress(y)
+        }
+    }
+}
+
+// MARK: - 仮配置カード（タイトル入力、Enter で確定）
+private struct PendingPlacementCardView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
+    @State private var title: String = ""
+    @FocusState private var isFocused: Bool
+    var onSubmit: (String) -> Void
+    var onCancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color.white)
+                .frame(width: 6)
+                .padding(10)
+
+            TextField("タイトルを入力", text: $title)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .submitLabel(.done)
+                .onSubmit {
+                    onSubmit(title)
+                }
+                .focused($isFocused)
+                .onAppear { isFocused = true }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppColors.pendingCardBackground(palette: themeManager.theme, environmentScheme: colorScheme))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(AppColors.pendingCardStroke(palette: themeManager.theme, environmentScheme: colorScheme), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+        )
+    }
+}
+
 #Preview("timeline with items") {
     TimelineScreen(items: [
         TimelineItem(title: "Wake up", durationMinutes: 15, startMinutes: 11 * 60, dropDate: Date()),
-        TimelineItem(title: "Workout", durationMinutes: 60, startMinutes: 2 * 60 + 45, dropDate: Date()),
-        TimelineItem(title: "Breakfast", durationMinutes: 30, startMinutes: 4 * 60, dropDate: Date()),
+        TimelineItem(title: "Workout", durationMinutes: 60, startMinutes: 3 * 60, dropDate: Date()),
+        TimelineItem(title: "Breakfast", durationMinutes: 15, startMinutes: 4 * 60, dropDate: Date()),
         TimelineItem(title: "Study", durationMinutes: 120, startMinutes: 5 * 60, dropDate: Date())
     ])
+    .environmentObject(SubscriptionManager())
+    .environmentObject(ThemeManager())
 }

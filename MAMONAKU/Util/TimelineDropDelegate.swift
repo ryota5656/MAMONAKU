@@ -17,6 +17,10 @@ struct TimelineDropDelegate: DropDelegate {
 //    }
 
     func performDrop(info: DropInfo) -> Bool {
+        DispatchQueue.main.async {
+            dragItemID = nil
+        }
+
         defer {
             DispatchQueue.main.async {
                 preview = nil

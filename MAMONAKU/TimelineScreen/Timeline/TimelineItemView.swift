@@ -1,71 +1,79 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct ScheduleItemView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
     let item: TimelineItem
     let isEditing: Bool
     let showTimeRange: Bool
     let onEnterEdit: () -> Void
-    let onMovePreview: (CGFloat) -> Void
-    let onMoveEnd: (CGFloat) -> Void
     let onResizePreview: (CGFloat) -> Void
     let onResizeEnd: (CGFloat) -> Void
-    let onDelete: () -> Void
-    private let cornerRadius: CGFloat = 5
+    var onDragStart: ((UUID) -> Void)? = nil
+    var onComplete: (() -> Void)? = nil
+    var onUncomplete: (() -> Void)? = nil
+    private let cornerRadius: CGFloat = 12
+    private let leftBarWidth: CGFloat = 6
     @State private var isBubbleVisible = false
     @State private var isBubbleWiggling = false
 
+    private var cardColor: Color {
+        let colors = AppColors.itemCardColors(palette: themeManager.theme, environmentScheme: colorScheme)
+        let index = abs(item.id.hashValue) % max(colors.count, 1)
+        return colors[min(index, colors.count - 1)]
+    }
+
+    private var leftBarColor: Color {
+        cardColor.opacity(0.85)
+    }
+
+    private var startTimeText: String {
+        guard let start = item.startMinutes else { return "" }
+        let h = start / 60
+        let m = start % 60
+        return String(format: "%02d:%02d", h, m)
+    }
+
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            HStack(spacing: 0) {
-                RoundedRectangle(cornerRadius: 30)
-                    .fill(AppColors.systemBackground)
-                    .frame(width: 15)
-//                    .overlay(
-//                        Image(systemName: "heart.fill")
-//                            .font(.system(size: 10, weight: .bold))
-//                            .foregroundStyle(.white)
-//                    )
+        GeometryReader { geo in
+            ZStack(alignment: .topTrailing) {
+                HStack(spacing: 0) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.white)
+                        .frame(width: leftBarWidth)
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 10)
 
-            VStack(alignment: .leading, spacing: 4) {
-                if showTimeRange, item.startMinutes != nil {
-                    Text(TimelineViewModel.timeRangeText(
-                        startMinutes: item.startMinutes,
-                        durationMinutes: item.durationMinutes
-                    ))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        if showTimeRange, !startTimeText.isEmpty {
+                            Text(startTimeText)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.9))
+                        }
+                        HStack(spacing: 6) {
+                            PriorityIconView(priority: item.priority, color: .white.opacity(0.9), size: 14)
+                            Text(item.title)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Text(item.title)
-                    .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.primary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal,12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .frame(width: geo.size.width, height: geo.size.height)
+                .background(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(cardColor)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-
-            if isEditing {
-            Button {
-                onDelete()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 14))
-                        .foregroundColor(.black)
-                        .padding(1)
-                }
-            }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .contentShape(Rectangle())
-//        .simultaneousGesture(
-//            TapGesture()
-//                .onEnded {
-//                    guard !isEditing else { return }
-//                    withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
-//                        isBubbleVisible.toggle()
-//                    }
-//                }
-//        )
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+//        .contentShape(Rectangle())
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.6, maximumDistance: 10)
                 .onEnded { _ in
@@ -75,18 +83,16 @@ struct ScheduleItemView: View {
                     onEnterEdit()
                 }
         )
-        .simultaneousGesture(moveGesture, including: isEditing ? .all : .subviews)
-        .overlay(alignment: .bottomTrailing) {
-            if !isEditing {
-                moveHandle
-                    .gesture(alwaysMoveGesture)
-            }
-        }
+        .contentShape(Rectangle())
+        .modifier(ConditionalOnDragModifier(condition: true, itemID: item.id, onDragStart: onDragStart))
         .overlay(alignment: .bottom) {
             if isEditing {
-                resizeHandle
-                    .contentShape(Rectangle())
-                    .highPriorityGesture(resizeGesture)
+                VStack(spacing: 0) {
+                    resizeHandle
+                        .contentShape(Rectangle())
+                        .highPriorityGesture(resizeGesture)
+                    resizeHandleDot
+                }
             }
         }
         .overlay(alignment: .topLeading) {
@@ -115,32 +121,34 @@ struct ScheduleItemView: View {
 //        )
         .overlay {
             if isEditing {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(AppColors.accent.opacity(0.35), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(AppColors.cardStroke(palette: themeManager.theme, environmentScheme: colorScheme), style: StrokeStyle(lineWidth: 1.5, dash: [4, 9]))
+            } else {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(AppColors.cardStroke(palette: themeManager.theme, environmentScheme: colorScheme), style: StrokeStyle(lineWidth: 1.5, dash: [100, 0]))
             }
         }
-    }
-
-    private var alwaysMoveGesture: some Gesture {
-        DragGesture(minimumDistance: 4)
-            .onChanged { value in
-                onMovePreview(value.translation.height)
+        .overlay(alignment: .topTrailing) {
+            if item.isCompleted, let onUncomplete {
+                Button(action: onUncomplete) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .buttonStyle(.plain)
+                .padding(10)
+            } else if !item.isCompleted, let onComplete {
+                Button(action: onComplete) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .buttonStyle(.plain)
+                .padding(10)
             }
-            .onEnded { value in
-                onMoveEnd(value.translation.height)
-            }
-    }
-
-    private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { value in
-                guard isEditing else { return }
-                onMovePreview(value.translation.height)
-            }
-            .onEnded { value in
-                guard isEditing else { return }
-                onMoveEnd(value.translation.height)
-            }
+        }
     }
 
     private var resizeGesture: some Gesture {
@@ -153,24 +161,19 @@ struct ScheduleItemView: View {
             }
     }
 
-    // 時間を可変できるハンドル
+    // 時間を可変できるハンドル（タップ領域）
     private var resizeHandle: some View {
         RoundedRectangle(cornerRadius: 3, style: .continuous)
-            .frame(width:.infinity, height: 15)
+            .frame(width: .infinity, height: 15)
             .opacity(0.01)
     }
 
-    private var moveHandle: some View {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .fill(Color.black.opacity(0.01))
-            .overlay(
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.5))
-            )
-            .frame(width: 35, height: 30)
-            .padding(.top, 6)
-            .padding(.leading, 8)
+    // 下に伸ばせることを示す丸
+    private var resizeHandleDot: some View {
+        Circle()
+            .fill(cardColor)
+            .frame(width: 8, height: 8)
+            .offset(y: 3)
     }
 
     private var bubbleView: some View {
@@ -185,7 +188,7 @@ struct ScheduleItemView: View {
                         .fill(Color(.systemBackground))
                         .overlay(
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color.black.opacity(0.1), lineWidth: 1)
+                                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
                         )
                 )
             Triangle()
@@ -194,11 +197,24 @@ struct ScheduleItemView: View {
                 .padding(.leading, 14)
                 .offset(y: -1)
         }
-        .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 3)
+        .shadow(color: Color.primary.opacity(0.15), radius: 6, x: 0, y: 3)
     }
+}
 
-    private var accentColor: Color {
-        Color.black
+private struct ConditionalOnDragModifier: ViewModifier {
+    let condition: Bool
+    let itemID: UUID
+    var onDragStart: ((UUID) -> Void)? = nil
+
+    func body(content: Content) -> some View {
+        if condition {
+            content.onDrag {
+                onDragStart?(itemID)
+                return NSItemProvider(object: itemID.uuidString as NSString)
+            }
+        } else {
+            content
+        }
     }
 }
 
@@ -219,14 +235,12 @@ private struct Triangle: Shape {
         isEditing: false,
         showTimeRange: true,
         onEnterEdit: {},
-        onMovePreview: { _ in },
-        onMoveEnd: { _ in },
         onResizePreview: { _ in },
-        onResizeEnd: { _ in },
-        onDelete: {}
+        onResizeEnd: { _ in }
     )
     .frame(height: 100)
     .padding(20)
+    .environmentObject(ThemeManager())
 }
 
 #Preview("scheduleItemEdit"){
@@ -235,12 +249,10 @@ private struct Triangle: Shape {
         isEditing: true,
         showTimeRange: true,
         onEnterEdit: {},
-        onMovePreview: { _ in },
-        onMoveEnd: { _ in },
         onResizePreview: { _ in },
-        onResizeEnd: { _ in },
-        onDelete: {}
+        onResizeEnd: { _ in }
     )
     .frame(height: 100)
     .padding(20)
+    .environmentObject(ThemeManager())
 }

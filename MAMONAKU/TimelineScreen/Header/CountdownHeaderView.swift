@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct CountdownHeaderView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
     let items: [TimelineItem]
     @Binding var isExpanded: Bool
 
@@ -14,9 +16,9 @@ struct CountdownHeaderView: View {
             VStack {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 0) {
-                            Text(next != nil ? "Next event in..." : "Today's Status")
+                            TypewriterText(text: next != nil ? ">>> Next event in..." : ">>> Have a nice day!", interval: 0.05)
                                 .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.black.opacity(0.6))
+                                .foregroundColor(.primary.opacity(0.6))
                                 .padding(.bottom, -5)
 
                             if let _ = next {
@@ -25,9 +27,8 @@ struct CountdownHeaderView: View {
                             } else {
                                 Text("NO PLAN")
                                     .font(.system(size: 36, weight: .heavy, design: .rounded))
-                                    .foregroundColor(.black.opacity(0.8))
+                                    .foregroundColor(.primary.opacity(0.8))
                                     .padding(.bottom, -5)
-                                    .rotationEffect(.degrees(-2))
                             }
                     }
                     nextInfoCard(next: next)
@@ -37,15 +38,10 @@ struct CountdownHeaderView: View {
                     
                 VStack {
                     if let _ = next, diff <= 3600 {
-                        CountdownProgressBar(secondsRemaining: diff)
-                        HStack {
-                            TypewriterText(text: next != nil ? ">>> Next event in..." : ">>> Have a nice day!", interval: 0.05)
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.black.opacity(0.6))
-                                .padding(.bottom, -5)
-                                .padding(.leading, 5)
-                            Spacer()
-                        }
+                        CountdownProgressBar(
+                            secondsRemaining: diff,
+                            accent: AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
+                        )
                     }
                 }
             }
@@ -66,18 +62,18 @@ struct CountdownHeaderView: View {
         return (h * 3600) + (m * 60) + s
     }
 
+    /// 指定秒数（0時からの経過秒）より後に開始する、今日の最初の予定を返す。残り1分のときも「次」として表示するため秒単位で比較する。
     private func nextItem(afterSeconds seconds: Int) -> TimelineItem? {
-        let startMinutes = Int(ceil(Double(seconds) / 60.0))
         let todayItems = items.filter { item in
             guard let dropDate = item.dropDate else { return false }
             return Calendar.current.isDateInToday(dropDate)
         }
         let candidates: [(TimelineItem, Int)] = todayItems.compactMap { item in
             guard let minutes = item.startMinutes else { return nil }
-            return (item, minutes)
+            return (item, minutes * 60)
         }
         return candidates
-            .filter { $0.1 >= startMinutes }
+            .filter { $0.1 > seconds }
             .min(by: { $0.1 < $1.1 })?
             .0
     }
@@ -94,10 +90,10 @@ struct CountdownHeaderView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(minutesToTime(next.startMinutes ?? 0))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.black.opacity(0.8))
+                    .foregroundColor(.primary.opacity(0.8))
                 Text(next.title)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.black.opacity(0.6))
+                    .foregroundColor(.primary.opacity(0.6))
                     .lineLimit(2)
             }
             .padding(.vertical, 10)
@@ -105,7 +101,7 @@ struct CountdownHeaderView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.black.opacity(0.05))
+                    .fill(Color.primary.opacity(0.06))
             )
         }
     }
@@ -140,13 +136,15 @@ private struct CountdownDisplay: View {
 }
 
 private struct CountdownDigit: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
     let text: String
 
     var body: some View {
         Text(text)
             .font(.system(size: 30,weight: .heavy, design: .rounded))
 //            .font(.custom("kohinoorGujarati-Bold", size: 36))
-            .foregroundColor(Color.black.opacity(0.9))
+            .foregroundColor(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
             .monospacedDigit()
             .contentTransition(.numericText())
     }
@@ -156,12 +154,13 @@ private struct CountdownSeparator: View {
     var body: some View {
         Text(":")
             .font(.system(size: 30,weight: .heavy, design: .rounded))
-            .foregroundColor(Color.black)
+            .foregroundColor(Color.primary)
     }
 }
 
 private struct CountdownProgressBar: View {
     let secondsRemaining: Int
+    let accent: Color
 
     private var clampedSeconds: Int {
         max(0, min(3600, secondsRemaining))
@@ -177,14 +176,14 @@ private struct CountdownProgressBar: View {
                 let width = proxy.size.width
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(Color.black.opacity(0.06))
+                        .fill(Color.primary.opacity(0.06))
                     Capsule()
-                        .fill(Color.black)
+                        .fill(accent)
                         .frame(width: max(6, width * progress))
                     HStack(spacing: 0) {
                         ForEach(0..<5, id: \.self) { index in
                             Circle()
-                                .fill(Color.black)
+                                .fill(accent)
                                 .frame(width: 6, height: 6)
                                 .opacity(0.15)
                                 .frame(maxWidth: .infinity)
@@ -238,6 +237,7 @@ private struct TypewriterText: View {
 
 #Preview{
     ContentView()
+        .environmentObject(ThemeManager())
 }
 
 #Preview("timeline with items") {
@@ -247,4 +247,6 @@ private struct TypewriterText: View {
         TimelineItem(title: "Breakfast", durationMinutes: 30, startMinutes: 4 * 60, dropDate: Date()),
         TimelineItem(title: "Study", durationMinutes: 120, startMinutes: 5 * 60, dropDate: Date())
     ])
+    .environmentObject(SubscriptionManager())
+    .environmentObject(ThemeManager())
 }

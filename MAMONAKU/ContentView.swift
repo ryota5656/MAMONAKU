@@ -2,17 +2,22 @@ import SwiftUI
 import Combine
 
 struct ContentView: View {
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         VStack(spacing: 0) {
             TimelineScreen()
-//                .background(AppColors.systemBackground2)
+                .background(AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme))
         }
-        .preferredColorScheme(.light)
+        .preferredColorScheme(themeManager.theme.preferredColorScheme)
     }
 }
 
 #Preview {
     ContentView()
+        .environmentObject(SubscriptionManager())
+        .environmentObject(ThemeManager())
 }
 
 class FontInfo: ObservableObject {
