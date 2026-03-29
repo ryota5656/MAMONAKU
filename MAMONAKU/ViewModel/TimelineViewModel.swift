@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Combine
 import ActivityKit
+import UserNotifications
 
 @MainActor
 class TimelineViewModel: ObservableObject {
@@ -35,6 +36,10 @@ class TimelineViewModel: ObservableObject {
     private var activity: Activity<MAMONAKULiveActivityAttributes>?
     private var calendarSyncTimer: AnyCancellable?
     private var liveActivityRefreshTask: Task<Void, Never>?
+    private let soonNotificationID = "liveActivity.soon.notification"
+    private static let defaultGlobalBufferMinutes = 10
+    private static let minBufferMinutes = 1
+    private static let maxBufferMinutes = 120
 
     init(
         repository: TimelineRepositoryProtocol = TimelineRepository(),
@@ -304,6 +309,7 @@ class TimelineViewModel: ObservableObject {
     func updateLiveActivity() {
         liveActivityRefreshTask?.cancel()
         liveActivityRefreshTask = nil
+        cancelSoonNotification()
         let nowSeconds = secondsSinceMidnight(date: Date())
         if let next = nextItem(afterSeconds: nowSeconds) {
             let cal = Calendar.current
@@ -313,8 +319,9 @@ class TimelineViewModel: ObservableObject {
                 second: 0,
                 of: Date()
             ) ?? Date()
+            scheduleSoonNotificationIfPossible(item: next, startDate: startDate)
             Task {
-                await startOrUpdate(nextTitle: next.title, nextStartDate: startDate)
+                await startOrUpdate()
             }
             let interval = startDate.timeIntervalSinceNow
             if interval > 0 {
@@ -328,9 +335,74 @@ class TimelineViewModel: ObservableObject {
             }
         } else {
             Task {
-                await startOrUpdate(nextTitle: "No Plan", nextStartDate: nil)
+                await startOrUpdate()
             }
         }
+    }
+
+    /// バッファ分前に time-sensitive 通知を出して次行動を促す。
+    /// 端末設定により画面点灯しない場合があります。
+    private func scheduleSoonNotificationIfPossible(item: TimelineItem, startDate: Date) {
+        guard isBufferNotificationEnabled else { return }
+        guard let bufferMinutes = effectiveBufferMinutes(for: item) else { return }
+        let triggerDate = startDate.addingTimeInterval(TimeInterval(-bufferMinutes * 60))
+        guard triggerDate > Date() else { return }
+
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                self.scheduleSoonNotification(title: item.title, triggerDate: triggerDate)
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                    guard granted else { return }
+                    self.scheduleSoonNotification(title: item.title, triggerDate: triggerDate)
+                }
+            default:
+                break
+            }
+        }
+    }
+
+    private func scheduleSoonNotification(title: String, triggerDate: Date) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [soonNotificationID])
+
+        let content = UNMutableNotificationContent()
+        content.title = "まもなく開始"
+        content.body = "まもなく「\(title)」です。準備をしましょう"
+        content.sound = .default
+        if #available(iOS 15.0, *) {
+            content.interruptionLevel = .timeSensitive
+        }
+
+        let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: triggerDate)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+        let request = UNNotificationRequest(identifier: soonNotificationID, content: content, trigger: trigger)
+        center.add(request)
+    }
+
+    private func cancelSoonNotification() {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [soonNotificationID])
+    }
+
+    private var appGroupDefaults: UserDefaults? {
+        UserDefaults(suiteName: AppGroup.id)
+    }
+
+    private var isBufferNotificationEnabled: Bool {
+        let isSubscribed = appGroupDefaults?.bool(forKey: SubscriptionManager.subscriptionStateUserDefaultsKey) ?? false
+        let isEnabledByUser = appGroupDefaults?.object(forKey: AppGroup.bufferNotificationEnabledKey) as? Bool ?? true
+        return isSubscribed && isEnabledByUser
+    }
+
+    private func effectiveBufferMinutes(for item: TimelineItem) -> Int? {
+        guard isBufferNotificationEnabled else { return nil }
+        let global = appGroupDefaults?.object(forKey: AppGroup.globalBufferMinutesKey) as? Int
+            ?? Self.defaultGlobalBufferMinutes
+        let candidate = item.bufferMinutes ?? global
+        let clamped = min(max(candidate, Self.minBufferMinutes), Self.maxBufferMinutes)
+        return clamped
     }
 
     /// 短いフォーマットの残り時間（例: 14:32 / 1:23）
@@ -469,19 +541,32 @@ class TimelineViewModel: ObservableObject {
 
 
 extension TimelineViewModel {
-    func startOrUpdate(nextTitle: String, nextStartDate: Date?) async {
+    func startOrUpdate() async {
         print("startOrUpdate")
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
         let attributes = MAMONAKULiveActivityAttributes(name: "testRoom08")
-        let countdownStartDate = nextStartDate.map { _ in Date() }
-        let remainingShort = nextStartDate.map { Self.shortCountdownString(to: $0) } ?? "--:--"
-        let state = MAMONAKULiveActivityAttributes.ContentState(
-            nextTitle: nextTitle,
-            nextStartDate: nextStartDate,
-            countdownStartDate: countdownStartDate,
-            remainingTimeShort: remainingShort
-        )
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        let todaySchedule: [ActivityTaskItem] = items
+            .filter { item in
+                guard let dropDate = item.dropDate, item.startMinutes != nil else { return false }
+                return calendar.isDateInToday(dropDate)
+            }
+            .sorted { ($0.startMinutes ?? 0) < ($1.startMinutes ?? 0) }
+            .map { item in
+                let startDate = calendar.date(byAdding: .minute, value: item.startMinutes ?? 0, to: startOfToday)
+                let bufferMinutes = effectiveBufferMinutes(for: item)
+                return ActivityTaskItem(
+                    nextTitle: item.title,
+                    nextStartDate: startDate,
+                    countdownStartDate: Date(),
+                    remainingTimeShort: startDate.map { Self.shortCountdownString(to: $0) } ?? "--:--",
+                    bufferMinutes: bufferMinutes
+                )
+            }
+
+        let state = MAMONAKULiveActivityAttributes.ContentState(schedule: todaySchedule)
 
         if activity == nil {
             activity = Activity<MAMONAKULiveActivityAttributes>.activities.first(where: { $0.attributes.name == attributes.name })

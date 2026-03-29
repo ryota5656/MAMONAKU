@@ -22,6 +22,10 @@ struct TimelineScreen: View {
     @State private var isSettingsPresented = false
     @State private var isDeleteButtonTargeted = false
     @State private var isReturnToStockTargeted = false
+    @AppStorage("tutorial.firstRun.completed") private var isFirstRunTutorialCompleted: Bool = false
+    @State private var tutorialStep: TutorialStep? = nil
+    @State private var tutorialPulse: Bool = false
+    private let isRadialMenuEnabled = false
 
     init() {
         _viewModel = StateObject(wrappedValue: TimelineViewModel())
@@ -53,11 +57,20 @@ struct TimelineScreen: View {
 
                 WhiteSheetView(
                     viewModel: viewModel,
-                    sheetHeight: $sheetHeight
+                    sheetHeight: $sheetHeight,
+                    onTapSettings: { isSettingsPresented = true }
                 )
                 .offset(y: isHeaderExpanded ? (headerHeight + 12) : 0)
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isHeaderExpanded)
 
+                }
+                .overlay(alignment: .top) {
+                    if let tutorialStep {
+                        tutorialOverlay(step: tutorialStep)
+                            .padding(.top, tutorialStep == .confirmCountdown ? 150 : 14)
+                            .padding(.horizontal, 16)
+                            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutorialStep)
+                    }
                 }
                 .sheet(isPresented: $isTaskSheetPresented) {
                     TaskListSheetView(
@@ -79,7 +92,7 @@ struct TimelineScreen: View {
                         },
                         heightForDuration: { viewModel.heightForDuration($0) },
                         onAddDebugTask: {
-                            viewModel.addTestTask(startDate: Date().addingTimeInterval(60), durationMinutes: 15)
+                            viewModel.addTestTask(startDate: Date().addingTimeInterval(90), durationMinutes: 15)
                         },
                         isSubscribed: subscriptionManager.effectiveIsSubscribed
                     )
@@ -96,8 +109,11 @@ struct TimelineScreen: View {
                     isDraggingTask = false
                     isTaskSheetPresented = false
                 }
+                // MARK: - 左の展開マーク
                 .overlay(alignment: .bottomLeading) {
                     Group {
+                        let primary = AppColors.primary(palette: themeManager.theme, environmentScheme: colorScheme)
+                        let onAccent = AppColors.onAccent(palette: themeManager.theme, environmentScheme: colorScheme)
                         if viewModel.editMode.isEditing {
                             ItemDropTarget(
                                 onDrop: { viewModel.deleteItem(id: $0) },
@@ -113,11 +129,9 @@ struct TimelineScreen: View {
                                 .zIndex(1)
                                 .overlay(alignment: .center) {
                                     ZStack {
-                                        Circle()
-                                            .foregroundStyle(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
                                         Image(systemName: "trash.circle.fill")
                                             .font(.system(size: 35))
-                                            .foregroundStyle(.white)
+                                            .foregroundStyle(primary)
                                             .shadow(color: Color.primary.opacity(0.2), radius: 6, x: 0, y: 3)
                                     }
                                     .scaleEffect(isDeleteButtonTargeted ? 1.15 : 1.0)
@@ -132,8 +146,8 @@ struct TimelineScreen: View {
                             } label: {
                                 Image(systemName: isHeaderExpanded ? "chevron.down.circle.fill" : "chevron.up.circle.fill")
                                     .font(.system(size: 35))
-                                    .foregroundStyle(Color.primary.opacity(0.8))
-                                    .shadow(color: Color.primary.opacity(0.2), radius: 6, x: 0, y: 3)
+                                    .foregroundStyle(primary)
+                                    .shadow(color: onAccent.opacity(0.2), radius: 6, x: 0, y: 3)
                             }
                             .frame(width: 44, height: 44)
                         }
@@ -141,11 +155,12 @@ struct TimelineScreen: View {
                     .padding(.leading, 30)
                     .padding(.bottom, 20)
                 }
+                // MARK: - 右のプラスマーク
                 .overlay(alignment: .bottomTrailing) {
                     ZStack {
-                        let accent = AppColors.accent(palette: themeManager.theme, environmentScheme: colorScheme)
+                        let primary = AppColors.primary(palette: themeManager.theme, environmentScheme: colorScheme)
                         let onAccent = AppColors.onAccent(palette: themeManager.theme, environmentScheme: colorScheme)
-                        if isRadialMenuVisible {
+                        if isRadialMenuEnabled && isRadialMenuVisible {
                             radialMenu
                         }
 
@@ -166,9 +181,9 @@ struct TimelineScreen: View {
                                 .overlay(alignment: .center) {
                                     ZStack {
                                         Circle()
-                                            .foregroundStyle(accent.opacity(0.9))
+                                            .foregroundStyle(primary)
                                         Image(systemName: "tray.and.arrow.down")
-                                            .font(.system(size: 20, weight: .bold))
+                                            .font(.system(size: 18, weight: .bold))
                                             .foregroundStyle(onAccent)
                                             .shadow(color: Color.primary.opacity(0.2), radius: 8, x: 0, y: 4)
                                     }
@@ -180,48 +195,90 @@ struct TimelineScreen: View {
                         }
 
                         if !viewModel.editMode.isEditing {
+                            if isRadialMenuEnabled {
+                                ZStack {
+                                    Circle()
+                                        .foregroundStyle(primary)
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundStyle(onAccent)
+                                        .shadow(color: Color.primary.opacity(0.2), radius: 8, x: 0, y: 4)
+                                }
+                                .frame(width: 35, height: 35)
+                                .overlay {
+                                    if tutorialStep == .openTaskList {
+                                        Circle()
+                                            .stroke(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme), lineWidth: 3)
+                                            .scaleEffect(tutorialPulse ? 1.35 : 1.05)
+                                            .opacity(tutorialPulse ? 0.2 : 0.9)
+                                            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: tutorialPulse)
+                                            .onAppear { tutorialPulse = true }
+                                    }
+                                }
+                                .contentShape(Circle())
+                                .onTapGesture {
+                                    isTaskSheetPresented = true
+                                    if tutorialStep == .openTaskList {
+                                        tutorialStep = .placeTaskAfterNow
+                                    }
+                                }
+                                .gesture(
+                                    DragGesture(minimumDistance: 0)
+                                        .onChanged { value in
+                                            if !isRadialMenuVisible {
+                                                withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                                                    isRadialMenuVisible = true
+                                                    radialSelection = nil
+                                                }
+                                            }
+                                            let selection = radialAction(at: value.location, in: CGSize(width: 52, height: 52))
+                                            radialSelection = selection
+                                            if selection != nil, selection != lastHapticSelection {
+                                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                                generator.prepare()
+                                                generator.impactOccurred()
+                                                lastHapticSelection = selection
+                                            }
+                                        }
+                                        .onEnded { _ in
+                                            if isRadialMenuVisible, let selection = radialSelection {
+                                                trigger(action: selection)
+                                            }
+                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                                                isRadialMenuVisible = false
+                                                radialSelection = nil
+                                                lastHapticSelection = nil
+                                            }
+                                        }
+                                )
+                            } else {
                             ZStack {
                                 Circle()
-                                    .foregroundStyle(accent.opacity(0.9))
+                                    .foregroundStyle(primary)
                                 Image(systemName: "plus")
                                     .font(.system(size: 20, weight: .bold))
                                     .foregroundStyle(onAccent)
                                     .shadow(color: Color.primary.opacity(0.2), radius: 8, x: 0, y: 4)
                             }
                             .frame(width: 35, height: 35)
+                            .overlay {
+                                if tutorialStep == .openTaskList {
+                                    Circle()
+                                        .stroke(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme), lineWidth: 3)
+                                        .scaleEffect(tutorialPulse ? 1.35 : 1.05)
+                                        .opacity(tutorialPulse ? 0.2 : 0.9)
+                                        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: tutorialPulse)
+                                        .onAppear { tutorialPulse = true }
+                                }
+                            }
                             .contentShape(Circle())
                             .onTapGesture {
                                 isTaskSheetPresented = true
+                                if tutorialStep == .openTaskList {
+                                    tutorialStep = .placeTaskAfterNow
+                                }
                             }
-                            .gesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onChanged { value in
-                                        if !isRadialMenuVisible {
-                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
-                                                isRadialMenuVisible = true
-                                                radialSelection = nil
-                                            }
-                                        }
-                                        let selection = radialAction(at: value.location, in: CGSize(width: 52, height: 52))
-                                        radialSelection = selection
-                                        if selection != nil, selection != lastHapticSelection {
-                                            let generator = UIImpactFeedbackGenerator(style: .light)
-                                            generator.prepare()
-                                            generator.impactOccurred()
-                                            lastHapticSelection = selection
-                                        }
-                                    }
-                                    .onEnded { _ in
-                                        if isRadialMenuVisible, let selection = radialSelection {
-                                            trigger(action: selection)
-                                        }
-                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
-                                            isRadialMenuVisible = false
-                                            radialSelection = nil
-                                            lastHapticSelection = nil
-                                        }
-                                    }
-                            )
+                            }
                         }
                     }
                     .padding(.trailing, 30)
@@ -245,9 +302,13 @@ struct TimelineScreen: View {
 //            )
             .onAppear {
                 viewModel.updateLiveActivity()
+                startFirstRunTutorialIfNeeded()
             }
             .onChange(of: viewModel.items) { _, _ in
                 viewModel.updateLiveActivity()
+                if tutorialStep == .placeTaskAfterNow, hasPlacedTutorialTaskAfterNow() {
+                    tutorialStep = .confirmCountdown
+                }
             }
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
@@ -259,6 +320,112 @@ struct TimelineScreen: View {
                     break
                 }
             }
+    }
+
+    private func startFirstRunTutorialIfNeeded() {
+        guard !isFirstRunTutorialCompleted else { return }
+        ensureTutorialTaskExists()
+        tutorialStep = .openTaskList
+    }
+
+    private func ensureTutorialTaskExists() {
+        let tutorialTitle = "はじめてのタスク"
+        let hasTutorialTask = viewModel.items.contains { $0.title == tutorialTitle }
+        guard !hasTutorialTask else { return }
+        viewModel.addStockItem(title: tutorialTitle, durationMinutes: 30, priority: .low)
+    }
+
+    private func hasPlacedTutorialTaskAfterNow() -> Bool {
+        let nowMinutes = viewModel.minutesSinceMidnight(date: Date())
+        return viewModel.items.contains {
+            $0.title == "はじめてのタスク" &&
+            $0.dropDate != nil &&
+            ($0.startMinutes ?? -1) > nowMinutes
+        }
+    }
+
+    @ViewBuilder
+    private func tutorialOverlay(step: TutorialStep) -> some View {
+        let primary = AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
+        let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
+        let background = AppColors.settingsListBackground(palette: themeManager.theme, environmentScheme: colorScheme)
+
+        VStack(alignment: .leading, spacing: 8) {
+            Text("はじめてガイド")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(secondary)
+            Text(step.message)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(primary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let action = step.actionTitle {
+                Button(action) {
+                    switch step {
+                    case .confirmCountdown:
+                        tutorialStep = .explainLongPress
+                    case .explainLongPress:
+                        tutorialStep = .goLockScreen
+                    case .goLockScreen:
+                        tutorialStep = nil
+                        isFirstRunTutorialCompleted = true
+                    default:
+                        break
+                    }
+                }
+                .font(.caption.weight(.bold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
+                )
+                .foregroundStyle(Color.white)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(background)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(secondary.opacity(0.22), lineWidth: 1)
+        )
+    }
+}
+
+private enum TutorialStep {
+    case openTaskList
+    case placeTaskAfterNow
+    case confirmCountdown
+    case explainLongPress
+    case goLockScreen
+
+    var message: String {
+        switch self {
+        case .openTaskList:
+            return "まずは右下の＋ボタンをタップして、タスクリストを開きましょう。"
+        case .placeTaskAfterNow:
+            return "「はじめてのタスク」をドラッグして、現在時刻より後のタイムラインへ置いてみましょう。"
+        case .confirmCountdown:
+            return "残り時間が表示されることを確認できました。次へ進みましょう。"
+        case .explainLongPress:
+            return "タイムライン上を長押しすると、その位置に新しいアイテムをすぐ置けます。"
+        case .goLockScreen:
+            return "最後にロック画面で時刻表示（Live Activity）を確認して、チュートリアル完了です。"
+        }
+    }
+
+    var actionTitle: String? {
+        switch self {
+        case .confirmCountdown, .explainLongPress:
+            return "次へ"
+        case .goLockScreen:
+            return "チュートリアル完了"
+        default:
+            return nil
+        }
     }
 }
 
@@ -359,34 +526,34 @@ private struct HeaderHeightKey: PreferenceKey {
 
 private enum RadialAction: CaseIterable {
     case actionA
-    case actionB
-    case actionC
+//    case actionB
+//    case actionC
 
     var icon: String {
         switch self {
         case .actionA: return "gearshape"
-        case .actionB: return "clock"
-        case .actionC: return "flag"
+//        case .actionB: return "clock"
+//        case .actionC: return "flag"
         }
     }
 
     var offset: CGSize {
         switch self {
         case .actionA: return CGSize(width: -110, height: 0)
-        case .actionB: return CGSize(width: 0, height: -110)
-        case .actionC: return CGSize(width: -80, height: -80)
+//        case .actionB: return CGSize(width: 0, height: -110)
+//        case .actionC: return CGSize(width: -80, height: -80)
         }
     }
 }
 
 private extension TimelineScreen {
     var radialMenu: some View {
-        let accent = AppColors.accent(palette: themeManager.theme, environmentScheme: colorScheme)
+        let primary = AppColors.primary(palette: themeManager.theme, environmentScheme: colorScheme)
         let onAccent = AppColors.onAccent(palette: themeManager.theme, environmentScheme: colorScheme)
         return ZStack {
             ForEach(RadialAction.allCases, id: \.self) { action in
                 Circle()
-                    .fill(radialSelection == action ? accent : accent.opacity(0.85))
+                    .fill(radialSelection == action ? primary : primary.opacity(0.6))
                     .frame(width: 46, height: 46)
                     .overlay(
                         Image(systemName: action.icon)
@@ -425,14 +592,15 @@ private extension TimelineScreen {
         switch action {
         case .actionA:
             isSettingsPresented = true
-        case .actionB, .actionC:
-            break
+//        case .actionB, .actionC:
+//            break
         }
     }
 }
 
 #Preview{
     ContentView()
+        .environmentObject(SubscriptionManager())
         .environmentObject(ThemeManager())
 }
 #Preview("scheduleItemPreview"){
@@ -442,6 +610,7 @@ private extension TimelineScreen {
     )
     .frame(height: 100)
     .padding(20)
+    .environmentObject(ThemeManager())
 }
 
 

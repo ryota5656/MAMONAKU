@@ -3,7 +3,9 @@ import Combine
 
 struct ContentView: View {
     @EnvironmentObject private var themeManager: ThemeManager
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("onboarding.hasSeen") private var hasSeenOnboarding: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -11,6 +13,32 @@ struct ContentView: View {
                 .background(AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme))
         }
         .preferredColorScheme(themeManager.theme.preferredColorScheme)
+        .onAppear {
+            if !subscriptionManager.effectiveIsSubscribed, themeManager.theme != .system {
+                themeManager.theme = .system
+            }
+        }
+        .onChange(of: subscriptionManager.effectiveIsSubscribed) { _, isSubscribed in
+            if !isSubscribed, themeManager.theme != .system {
+                themeManager.theme = .system
+            }
+        }
+        .fullScreenCover(isPresented: onboardingBinding) {
+            OnboardingView {
+                hasSeenOnboarding = true
+            }
+        }
+    }
+
+    private var onboardingBinding: Binding<Bool> {
+        Binding(
+            get: { !hasSeenOnboarding },
+            set: { isPresented in
+                if !isPresented {
+                    hasSeenOnboarding = true
+                }
+            }
+        )
     }
 }
 

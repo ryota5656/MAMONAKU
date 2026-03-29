@@ -7,11 +7,13 @@ struct WhiteSheetView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @ObservedObject var viewModel: TimelineViewModel
     @Binding var sheetHeight: CGFloat
+    var onTapSettings: () -> Void = {}
     @State private var lastMagnification: CGFloat = 1.0
     @State private var tabSelection: Date = Calendar.current.startOfDay(for: Date())
     /// スワイプで配列がずれないよう、TabView の日付範囲の中心を固定する（カレンダーで遠い日を選んだときだけ更新）
     @State private var datesForTabCenter: Date = Calendar.current.startOfDay(for: Date())
     private let currentTimeAnchorID = "currentTimeAnchor"
+    @State private var hasCenteredCurrentTimeOnLaunch = false
 
     private func startOfDay(_ date: Date) -> Date {
         Calendar.current.startOfDay(for: date)
@@ -30,18 +32,19 @@ struct WhiteSheetView: View {
             VStack(spacing: 10) {
                 CalendarHeaderView(
                     selectedDate: $viewModel.selectedDate,
-                    isTwoDayView: $viewModel.isTwoDayView
+                    isTwoDayView: $viewModel.isTwoDayView,
+                    onTapSettings: onTapSettings
                 )
                 
                 TabView(selection: $tabSelection) {
                     ForEach(datesForTab, id: \.self) { date in
-                        ScrollViewReader { _ in
+                        ScrollViewReader { scrollProxy in
                             ScrollView(.vertical, showsIndicators: false) {
                                 HStack(alignment: .top, spacing: 0) {
                                     timeColumn
                                     singleDayTimelineColumn(date: date)
                                 }
-                                .padding(.bottom, 80)
+                                .padding(.bottom, 500) //GAD入れても良い
                                 .background(
                                     Color.clear
                                         .contentShape(Rectangle())
@@ -52,6 +55,9 @@ struct WhiteSheetView: View {
                                         }
                                 )
                                 .simultaneousGesture(magnificationGesture)
+                            }
+                            .onAppear {
+                                centerCurrentTimeIfNeeded(on: date, with: scrollProxy)
                             }
                         }
                         .tag(date)
@@ -101,7 +107,7 @@ struct WhiteSheetView: View {
             ForEach(0...24, id: \.self) { hour in
                 Text(String(format: "%02d:00", hour))
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
                     .frame(
                         width: viewModel.timeColumnWidth,
                         height: rowHeight,
@@ -256,10 +262,17 @@ struct WhiteSheetView: View {
             }
 
             if Calendar.current.isDate(date, inSameDayAs: Date()) {
-                Color.clear
-                    .frame(width: 1, height: 1)
-                    .offset(x: 0, y: viewModel.yOffset(for: viewModel.minutesSinceMidnight(date: Date())))
-                    .id(currentTimeAnchorID)
+                let anchorY = min(max(0, viewModel.yOffset(for: viewModel.minutesSinceMidnight(date: Date()))), max(0, height - 1))
+                VStack(spacing: 0) {
+                    Color.clear
+                        .frame(height: anchorY)
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .id(currentTimeAnchorID)
+                    Spacer(minLength: 0)
+                }
+                .frame(width: 1, height: height, alignment: .top)
+                .allowsHitTesting(false)
                 currentTimeLine(width: width)
             }
         }
@@ -290,6 +303,7 @@ struct WhiteSheetView: View {
         )
     }
 
+    // MARK: - 現在時間の位置ライン
     private func currentTimeLine(width: CGFloat) -> some View {
         TimelineView(.animation) { context in
             let minutes = viewModel.minutesSinceMidnight(date: context.date)
@@ -302,7 +316,7 @@ struct WhiteSheetView: View {
                     .offset(y: -10)
                 Text(viewModel.currentTimeText(date: context.date))
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppColors.strongAccentInsideText(palette: themeManager.theme, environmentScheme: colorScheme))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
@@ -333,6 +347,20 @@ struct WhiteSheetView: View {
     private func isSameDay(_ lhs: Date?, _ rhs: Date) -> Bool {
         guard let lhs else { return false }
         return Calendar.current.isDate(lhs, inSameDayAs: rhs)
+    }
+
+    private func centerCurrentTimeIfNeeded(on date: Date, with scrollProxy: ScrollViewProxy) {
+        guard !hasCenteredCurrentTimeOnLaunch else { return }
+        guard Calendar.current.isDateInToday(date) else { return }
+        Task { @MainActor in
+            for delay in [50_000_000] {
+                try? await Task.sleep(nanoseconds: UInt64(delay))
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    scrollProxy.scrollTo(currentTimeAnchorID, anchor: UnitPoint(x: 0.5, y: 0.1))
+                }
+            }
+            hasCenteredCurrentTimeOnLaunch = true
+        }
     }
 }
 

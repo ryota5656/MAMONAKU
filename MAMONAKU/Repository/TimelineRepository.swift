@@ -62,7 +62,6 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         self.realmConfig = config
 
         migrateUserDefaultsIfNeeded()
-        requestCalendarAccessIfNeeded()
         startCalendarChangeObservation()
         startCalendarSyncTimer()
     }

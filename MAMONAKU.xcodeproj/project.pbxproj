@@ -572,6 +572,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MAMONAKU/Info.plist;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "カレンダーは、イベントの表示に使用されます。";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "「イベントの登録やスケジュールの確認のために、カレンダーへのアクセスを使用します。」";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -624,6 +625,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MAMONAKU/Info.plist;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "カレンダーは、イベントの表示に使用されます。";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "「イベントの登録やスケジュールの確認のために、カレンダーへのアクセスを使用します。」";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;

@@ -12,7 +12,7 @@ import SwiftUI
 struct MAMONAKULiveActivityBundle: WidgetBundle {
     var body: some Widget {
         // ホーム画面ウィジェットは無効化（ロック画面 Live Activity / Dynamic Island のみ有効）
-        MAMONAKULiveActivityControl()
+//        MAMONAKULiveActivityControl()
         MAMONAKULiveActivityLiveActivity()
     }
 }

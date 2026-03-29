@@ -9,69 +9,146 @@ import SwiftUI
 import StoreKit
 
 struct SubscriptionSheetView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedProductID: String?
+
+    private var products: [Product] {
+        subscriptionManager.subscriptionProducts
+    }
+
+    private var selectedProduct: Product? {
+        guard let selectedProductID else { return products.first }
+        return products.first(where: { $0.id == selectedProductID }) ?? products.first
+    }
 
     var body: some View {
+        let primary = AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
+        let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
+        let accent = AppColors.accent(palette: themeManager.theme, environmentScheme: colorScheme)
+        let background = AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme)
+        let cardBackground = AppColors.settingsListBackground(palette: themeManager.theme, environmentScheme: colorScheme)
+
         NavigationStack {
-            List {
-                if subscriptionManager.effectiveIsSubscribed {
-                    Section {
-                        Label("加入中です", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("PLUSでできること")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(primary)
+                        Text("無料版との違いを確認して、年額 / 月額プランを選択できます。")
+                            .font(.subheadline)
+                            .foregroundStyle(secondary)
                     }
-                }
-                if let product = subscriptionManager.subscriptionProduct {
-                    Section {
+
+                    if subscriptionManager.effectiveIsSubscribed {
                         HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(product.displayName)
-                                    .font(.headline)
-                                Text(product.description)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(product.displayPrice)
-                                .font(.headline.monospacedDigit())
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                            Text("加入中です")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(primary)
                         }
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(cardBackground)
+                        )
                     }
-                } else {
-                    Section {
-                        Text("製品を読み込み中…")
-                            .foregroundStyle(.secondary)
+
+                    featureComparisonCard(
+                        primary: primary,
+                        secondary: secondary,
+                        cardBackground: cardBackground
+                    )
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("プランを選択")
+                            .font(.headline)
+                            .foregroundStyle(primary)
+
+                        if products.isEmpty {
+                            Text("プランを読み込み中…")
+                                .font(.subheadline)
+                                .foregroundStyle(secondary)
+                                .padding(.vertical, 8)
+                        } else {
+                            ForEach(products, id: \.id) { product in
+                                planRow(
+                                    product: product,
+                                    primary: primary,
+                                    secondary: secondary,
+                                    accent: accent,
+                                    cardBackground: cardBackground
+                                )
+                            }
+                        }
                     }
-                }
-                if let message = subscriptionManager.errorMessage {
-                    Section {
+
+                    if let message = subscriptionManager.errorMessage {
                         Text(message)
                             .foregroundStyle(.red)
                             .font(.caption)
+                            .padding(.top, 4)
                     }
-                }
-                Section {
-                    Button {
-                        Task {
-                            await subscriptionManager.purchase()
-                        }
-                    } label: {
-                        HStack {
-                            Text("購入する")
-                            Spacer()
-                            if subscriptionManager.isPurchasing {
-                                ProgressView()
-                            }
-                        }
-                    }
-                    .disabled(subscriptionManager.isPurchasing || subscriptionManager.subscriptionProduct == nil)
-                    Button("リストア") {
+
+                    Button("購入を復元") {
                         Task {
                             await subscriptionManager.restorePurchases()
                         }
                     }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(accent)
                     .disabled(subscriptionManager.isPurchasing)
+                    .padding(.top, 4)
+
+                    Spacer(minLength: 30)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+            }
+            .background(background)
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 8) {
+                    Button {
+                        guard let product = selectedProduct else { return }
+                        Task {
+                            await subscriptionManager.purchase(product: product)
+                        }
+                    } label: {
+                        HStack {
+                            Text("PLUSプランをはじめる")
+                                .font(.headline.weight(.semibold))
+                            Spacer()
+                            if subscriptionManager.isPurchasing {
+                                ProgressView()
+                                    .tint(AppColors.onAccent(palette: themeManager.theme, environmentScheme: colorScheme))
+                            } else if let selectedProduct {
+                                Text(selectedProduct.displayPrice)
+                                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .foregroundStyle(AppColors.onAccent(palette: themeManager.theme, environmentScheme: colorScheme))
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(accent)
+                        )
+                    }
+                    .disabled(subscriptionManager.isPurchasing || selectedProduct == nil)
+
+                    Text("いつでもキャンセルできます")
+                        .font(.caption2)
+                        .foregroundStyle(secondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+                .background(.ultraThinMaterial)
             }
             .navigationTitle("サブスクリプション")
             .navigationBarTitleDisplayMode(.inline)
@@ -84,14 +161,129 @@ struct SubscriptionSheetView: View {
             }
         }
         .onAppear {
+            applyDefaultSelectionIfNeeded(from: subscriptionManager.subscriptionProducts)
             Task {
                 await subscriptionManager.loadProducts()
             }
         }
+        .onChange(of: subscriptionManager.subscriptionProducts) { _, products in
+            applyDefaultSelectionIfNeeded(from: products)
+        }
+    }
+
+    private func applyDefaultSelectionIfNeeded(from products: [Product]) {
+        guard !products.isEmpty else {
+            selectedProductID = nil
+            return
+        }
+        if let selectedProductID, products.contains(where: { $0.id == selectedProductID }) {
+            return
+        }
+        selectedProductID = products.first(where: { planLabel(for: $0) == "年額プラン" })?.id ?? products.first?.id
+    }
+
+    private func planRow(
+        product: Product,
+        primary: Color,
+        secondary: Color,
+        accent: Color,
+        cardBackground: Color
+    ) -> some View {
+        let isSelected = product.id == selectedProduct?.id
+        return Button {
+            selectedProductID = product.id
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text(planLabel(for: product))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(primary)
+                        if planLabel(for: product) == "年額プラン" {
+                            Text("おすすめ")
+                                .font(.caption2.weight(.bold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .foregroundStyle(AppColors.onAccent(palette: themeManager.theme, environmentScheme: colorScheme))
+                                .background(
+                                    Capsule()
+                                        .fill(accent)
+                                )
+                        }
+                    }
+                    Text(product.displayName)
+                        .font(.caption)
+                        .foregroundStyle(secondary)
+                }
+                Spacer()
+                Text(product.displayPrice)
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(primary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(cardBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isSelected ? accent : secondary.opacity(0.25), lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func featureComparisonCard(primary: Color, secondary: Color, cardBackground: Color) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            comparisonRow(title: "テーマ選択", free: "システムのみ", plus: "全テーマ利用", primary: primary, secondary: secondary)
+            comparisonRow(title: "標準カレンダー同期", free: "利用不可", plus: "利用可能", primary: primary, secondary: secondary)
+            comparisonRow(title: "バッファ通知", free: "利用不可", plus: "オン/オフ + 分数設定", primary: primary, secondary: secondary)
+            comparisonRow(title: "優先度設定", free: "Lowのみ", plus: "Low / Medium / High", primary: primary, secondary: secondary)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(cardBackground)
+        )
+    }
+
+    private func comparisonRow(title: String, free: String, plus: String, primary: Color, secondary: Color) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(primary)
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("無料: \(free)")
+                    .font(.caption)
+                    .foregroundStyle(secondary)
+                Text("PLUS: \(plus)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(primary)
+            }
+        }
+    }
+
+    private func planLabel(for product: Product) -> String {
+        if product.id == SubscriptionManager.subscriptionYearlyProductID { return "年額プラン" }
+        if product.id == SubscriptionManager.subscriptionMonthlyProductID { return "月額プラン" }
+        if let period = product.subscription?.subscriptionPeriod {
+            switch period.unit {
+            case .year:
+                return "年額プラン"
+            case .month:
+                return "月額プラン"
+            default:
+                break
+            }
+        }
+        return "PLUSプラン"
     }
 }
 
 #Preview {
     SubscriptionSheetView()
         .environmentObject(SubscriptionManager())
+        .environmentObject(ThemeManager())
 }

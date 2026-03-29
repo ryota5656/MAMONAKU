@@ -5,12 +5,14 @@ struct CalendarHeaderView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Binding var selectedDate: Date
     @Binding var isTwoDayView: Bool
+    var onTapSettings: () -> Void = {}
 
     var body: some View {
         let cal = Calendar.current
         let weekdaySymbol = cal.weekdaySymbols[(cal.component(.weekday, from: selectedDate) - 1) % 7]
         let dateText = dateText(for: selectedDate)
         let weekDates = weekDates(for: selectedDate)
+        let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
 
         VStack(spacing: 8) {
             HStack() {
@@ -24,10 +26,19 @@ struct CalendarHeaderView: View {
                         .offset(y: -4)
                 }
                 Spacer()
-                Text(dateText)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.trailing)
+                HStack(spacing: 8) {
+                    Text(dateText)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(secondary)
+                        .multilineTextAlignment(.trailing)
+                    Button(action: onTapSettings) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(secondary)
+                            .frame(width: 26, height: 26)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 10)
             .padding(.top, 10)
@@ -41,7 +52,7 @@ struct CalendarHeaderView: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(secondary)
                         .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.plain)
@@ -62,11 +73,11 @@ struct CalendarHeaderView: View {
                         VStack(spacing: 4) {
                             Text("\(cal.component(.day, from: date))")
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(isToday ? AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme) : (isSelected ? .primary : .secondary))
+                                .foregroundColor(isToday ? AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme) : (isSelected ? .primary : secondary))
                                 .frame(width: 24)
                             Text(shortWeekdaySymbol(for: date))
                                 .font(.system(size: 6, weight: .semibold))
-                                .foregroundColor(isToday ? AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme) : (isSelected ? .primary : .secondary))
+                                .foregroundColor(isToday ? AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme) : (isSelected ? .primary : secondary))
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 8)
@@ -86,7 +97,7 @@ struct CalendarHeaderView: View {
                 } label: {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(secondary)
                         .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.plain)

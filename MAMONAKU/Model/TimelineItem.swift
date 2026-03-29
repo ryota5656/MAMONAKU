@@ -37,6 +37,8 @@ struct TimelineItem: Identifiable, Equatable, Codable {
     var dropDate: Date?
     var isCompleted: Bool
     var priority: TaskPriority
+    /// 将来的なタスク個別バッファ分（現状は全体設定が優先）
+    var bufferMinutes: Int?
 
     init(
         id: UUID = UUID(),
@@ -45,7 +47,8 @@ struct TimelineItem: Identifiable, Equatable, Codable {
         startMinutes: Int? = nil,
         dropDate: Date? = nil,
         isCompleted: Bool = false,
-        priority: TaskPriority = .medium
+        priority: TaskPriority = .medium,
+        bufferMinutes: Int? = nil
     ) {
         self.id = id
         self.title = title
@@ -54,5 +57,6 @@ struct TimelineItem: Identifiable, Equatable, Codable {
         self.dropDate = dropDate
         self.isCompleted = isCompleted
         self.priority = priority
+        self.bufferMinutes = bufferMinutes
     }
 }

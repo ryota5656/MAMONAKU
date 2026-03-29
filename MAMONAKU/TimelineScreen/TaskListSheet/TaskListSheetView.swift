@@ -2,6 +2,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct TaskListSheetView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
     let items: [TimelineItem]
     @Binding var isPresented: Bool
     @Binding var isDraggingTask: Bool
@@ -34,10 +36,15 @@ struct TaskListSheetView: View {
     }
 
     var body: some View {
+        let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
+        let primary = AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
+        let accent = AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme)
+
         VStack(spacing: 12) {
             HStack(spacing: 12) {
                 Text("Stock")
                     .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(primary)
                 Spacer()
                 if !timelineTasks.isEmpty {
                     Button {
@@ -47,7 +54,7 @@ struct TaskListSheetView: View {
                     } label: {
                         Image(systemName: showTimelineItems ? "calendar.badge.clock" : "calendar")
                             .font(.system(size: 14))
-                            .foregroundStyle(showTimelineItems ? Color.accentColor : Color.secondary)
+                            .foregroundStyle(showTimelineItems ? accent : secondary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -58,7 +65,7 @@ struct TaskListSheetView: View {
                     } label: {
                         Text("+1分テスト")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(secondary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -71,6 +78,7 @@ struct TaskListSheetView: View {
                 } label: {
                     Text(editMode.isEditing ? "完了" : "並び替え")
                         .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(accent)
                 }
             }
             .padding(.top, 12)
@@ -79,7 +87,7 @@ struct TaskListSheetView: View {
                 VStack(spacing: 12) {
                     Text("タスクがありません")
                         .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondary)
                         .padding(.top, 12)
                     Spacer(minLength: 0)
                 }
@@ -119,7 +127,7 @@ struct TaskListSheetView: View {
                         } header: {
                             Text("タイムラインに配置済み")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(secondary)
                         }
                     }
                 }
@@ -171,14 +179,14 @@ struct TaskListSheetView: View {
                 } label: {
                     PriorityIconView(
                         priority: newPriority,
-                        color: Color.accentColor,
+                        color: priorityColor(for: newPriority),
                         size: 22
                     )
                 }
             } else {
                 PriorityIconView(
                     priority: .low,
-                    color: Color.secondary,
+                    color: priorityColor(for: .low),
                     size: 22
                 )
             }
@@ -224,6 +232,7 @@ struct TaskListSheetView: View {
             Picker("", selection: $newDurationMinutes) {
                 ForEach(Array(stride(from: 15, through: 240, by: 15)), id: \.self) { minutes in
                     Text("\(minutes) min")
+                        .foregroundStyle(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
                         .font(.system(size: 10))
                 }
             }
@@ -231,7 +240,7 @@ struct TaskListSheetView: View {
         } label: {
             Text("\(newDurationMinutes) min")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(
@@ -240,9 +249,22 @@ struct TaskListSheetView: View {
                 )
         }
     }
+
+    private func priorityColor(for priority: TaskPriority) -> Color {
+        switch priority {
+        case .low:
+            return AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
+        case .medium:
+            return AppColors.accent(palette: themeManager.theme, environmentScheme: colorScheme)
+        case .high:
+            return AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme)
+        }
+    }
 }
 
 private struct TaskListRow: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
     let item: TimelineItem
     let isOnTimeline: Bool
     @Binding var isDraggingTask: Bool
@@ -295,7 +317,7 @@ private struct TaskListRow: View {
                     PriorityIconView(priority: item.priority, color: priorityIconColor, size: 14)
                     Text(item.title)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(textColor)
+                        .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
                 }
                 HStack(spacing: 6) {
                     Text("\(item.durationMinutes) min")
@@ -319,21 +341,23 @@ private struct TaskListRow: View {
     }
 
     private var textColor: Color {
-        if isOnTimeline { return .secondary }
+        if isOnTimeline { return AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme) }
         return .primary
     }
 
     private var durationColor: Color {
         if isOnTimeline { return Color(uiColor: .tertiaryLabel) }
-        return .secondary
+        return AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
     }
 
     private var priorityIconColor: Color {
-        if isOnTimeline { return Color(uiColor: .tertiaryLabel) }
         switch item.priority {
-        case .low: return .secondary
-        case .medium: return .secondary
-        case .high: return Color.accentColor
+        case .low:
+            return AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
+        case .medium:
+            return AppColors.accent(palette: themeManager.theme, environmentScheme: colorScheme)
+        case .high:
+            return AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme)
         }
     }
 
@@ -372,7 +396,7 @@ private struct TaskDragPreview: View {
                     .foregroundStyle(.primary)
                 Text("\(item.durationMinutes) min")
                     .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
                 Spacer(minLength: 0)
             }
 
@@ -423,4 +447,5 @@ struct PriorityIconView: View {
         onDelete: { _ in },
         heightForDuration: { CGFloat($0) / 60 * 80 }
     )
+    .environmentObject(ThemeManager())
 }

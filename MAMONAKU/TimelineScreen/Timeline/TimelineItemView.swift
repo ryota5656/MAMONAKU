@@ -53,7 +53,11 @@ struct ScheduleItemView: View {
                                 .foregroundStyle(.white.opacity(0.9))
                         }
                         HStack(spacing: 6) {
-                            PriorityIconView(priority: item.priority, color: .white.opacity(0.9), size: 14)
+                            PriorityIconView(
+                                priority: item.priority,
+                                color: .white,
+                                size: 14
+                            )
                             Text(item.title)
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(.white)

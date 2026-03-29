@@ -18,7 +18,7 @@ struct CountdownHeaderView: View {
                     VStack(alignment: .leading, spacing: 0) {
                             TypewriterText(text: next != nil ? ">>> Next event in..." : ">>> Have a nice day!", interval: 0.05)
                                 .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.primary.opacity(0.6))
+                                .foregroundColor(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
                                 .padding(.bottom, -5)
 
                             if let _ = next {
@@ -27,7 +27,7 @@ struct CountdownHeaderView: View {
                             } else {
                                 Text("NO PLAN")
                                     .font(.system(size: 36, weight: .heavy, design: .rounded))
-                                    .foregroundColor(.primary.opacity(0.8))
+                                    .foregroundColor(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
                                     .padding(.bottom, -5)
                             }
                     }
@@ -90,10 +90,10 @@ struct CountdownHeaderView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(minutesToTime(next.startMinutes ?? 0))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.primary.opacity(0.8))
+                    .foregroundColor(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
                 Text(next.title)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.primary.opacity(0.6))
+                    .foregroundColor(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
                     .lineLimit(2)
             }
             .padding(.vertical, 10)
@@ -151,10 +151,13 @@ private struct CountdownDigit: View {
 }
 
 private struct CountdownSeparator: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
+    
     var body: some View {
         Text(":")
             .font(.system(size: 30,weight: .heavy, design: .rounded))
-            .foregroundColor(Color.primary)
+            .foregroundColor(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
     }
 }
 

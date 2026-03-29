@@ -12,7 +12,14 @@ import StoreKit
 
 final class SubscriptionManager: ObservableObject {
     /// サブスクリプション製品 ID（App Store Connect で作成した ID）
-    static let subscriptionProductID = "mamonaku.subscription.plus"
+    static let subscriptionMonthlyProductID = "mamonaku.subscription.plus.monthly"
+    static let subscriptionYearlyProductID = "mamonaku.subscription.plus.yearly"
+    static let subscriptionLegacyProductID = "mamonaku.subscription.plus"
+    static let subscriptionProductIDs = [
+        subscriptionYearlyProductID,
+        subscriptionMonthlyProductID,
+        subscriptionLegacyProductID
+    ]
     /// App Group の UserDefaults に書き出すキー（TimelineRepository のカレンダー同期判定で参照）
     static let subscriptionStateUserDefaultsKey = "subscription_is_subscribed"
     private static let appGroupID = "group.sairyo.MAMONAKU"
@@ -33,7 +40,7 @@ final class SubscriptionManager: ObservableObject {
 
     #if DEBUG
     /// 開発用: true の間は加入扱い（StoreKit 未購入でも優先度選択可能）。トグルで変更すると objectWillChange と UserDefaults 同期で他 UI に反映される。
-    var debugOverrideSubscribed: Bool = false {
+    var debugOverrideSubscribed: Bool = true {
         didSet {
             objectWillChange.send()
             persistSubscriptionState()
@@ -42,7 +49,8 @@ final class SubscriptionManager: ObservableObject {
     #endif
 
     /// 読み込み済みのサブスクリプション製品（購入 UI 用）
-    @Published private(set) var subscriptionProduct: Product?
+    @Published private(set) var subscriptionProducts: [Product] = []
+    var subscriptionProduct: Product? { subscriptionProducts.first }
 
     /// 購入処理中
     @Published private(set) var isPurchasing: Bool = false
@@ -73,8 +81,10 @@ final class SubscriptionManager: ObservableObject {
     @MainActor
     func loadProducts() async {
         do {
-            let products = try await Product.products(for: [Self.subscriptionProductID])
-            subscriptionProduct = products.first
+            let products = try await Product.products(for: Self.subscriptionProductIDs)
+            subscriptionProducts = products.sorted { lhs, rhs in
+                Self.preferredSortOrder(for: lhs.id) < Self.preferredSortOrder(for: rhs.id)
+            }
         } catch {
             errorMessage = "製品の読み込みに失敗しました"
         }
@@ -86,7 +96,7 @@ final class SubscriptionManager: ObservableObject {
         var hasEntitlement = false
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else { continue }
-            if transaction.productID == Self.subscriptionProductID {
+            if Self.subscriptionProductIDs.contains(transaction.productID) {
                 hasEntitlement = true
                 break
             }
@@ -107,13 +117,20 @@ final class SubscriptionManager: ObservableObject {
         for await result in Transaction.updates {
             await MainActor.run {
                 guard case .verified(let transaction) = result else { return }
-                if transaction.productID == Self.subscriptionProductID {
+                if Self.subscriptionProductIDs.contains(transaction.productID) {
                     Task { @MainActor in
                         await updateSubscriptionStatus()
                     }
                 }
             }
         }
+    }
+
+    private static func preferredSortOrder(for id: String) -> Int {
+        if id == subscriptionYearlyProductID { return 0 }
+        if id == subscriptionMonthlyProductID { return 1 }
+        if id == subscriptionLegacyProductID { return 2 }
+        return 9
     }
 
     /// サブスクリプションを購入
@@ -124,6 +141,12 @@ final class SubscriptionManager: ObservableObject {
             await loadProducts()
             return
         }
+        await purchase(product: product)
+    }
+
+    /// 指定したサブスクリプション製品を購入
+    @MainActor
+    func purchase(product: Product) async {
         isPurchasing = true
         errorMessage = nil
         defer { isPurchasing = false }
