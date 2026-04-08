@@ -13,6 +13,9 @@ enum AppGroup {
     static let themeKey = "settings.theme.selected" // AppPalette を保存
     static let globalBufferMinutesKey = "settings.notification.global_buffer_minutes"
     static let bufferNotificationEnabledKey = "settings.notification.buffer_enabled"
+    static let startNotificationEnabledKey = "settings.notification.start_enabled"
+    static let liveActivityEnabledKey = "settings.live_activity.enabled"
+    static let liveActivityMultipleEnabledKey = "settings.live_activity.multiple_enabled"
     static let legacyAppearanceKey = "settings.theme.appearance"
     static let legacyPaletteKey = "settings.theme.palette"
 }
@@ -34,6 +37,15 @@ enum AppPalette: String, CaseIterable, Identifiable {
     /// 一時的に設定画面へ表示するテーマ一覧（POP / Elegant は非表示）
     static var visibleInSettings: [AppPalette] {
         allCases.filter { $0 != .pop && $0 != .elegant }
+    }
+
+    /// 無料で選択可能なテーマ
+    static var freeThemes: [AppPalette] {
+        [.system, .light, .dark]
+    }
+
+    var isFreeTheme: Bool {
+        Self.freeThemes.contains(self)
     }
 
     var displayName: String {
@@ -317,7 +329,7 @@ enum AppColors {
         case .light:
             return [literal(#colorLiteral(red: 0.2196078431, green: 0.2196078431, blue: 0.2196078431, alpha: 1))]
         case .dark:
-            return [literal(#colorLiteral(red: 0.2196078431, green: 0.2196078431, blue: 0.2196078431, alpha: 1))]
+            return [literal(#colorLiteral(red: 0.8039215803, green: 0.8039215803, blue: 0.8039215803, alpha: 1))]
         case .elegant:
             return [
                 literal(#colorLiteral(red: 0.1647058824, green: 0.1411764706, blue: 0.1254901961, alpha: 1)),

@@ -14,12 +14,12 @@ struct ContentView: View {
         }
         .preferredColorScheme(themeManager.theme.preferredColorScheme)
         .onAppear {
-            if !subscriptionManager.effectiveIsSubscribed, themeManager.theme != .system {
+            if !subscriptionManager.effectiveIsSubscribed, !themeManager.theme.isFreeTheme {
                 themeManager.theme = .system
             }
         }
         .onChange(of: subscriptionManager.effectiveIsSubscribed) { _, isSubscribed in
-            if !isSubscribed, themeManager.theme != .system {
+            if !isSubscribed, !themeManager.theme.isFreeTheme {
                 themeManager.theme = .system
             }
         }

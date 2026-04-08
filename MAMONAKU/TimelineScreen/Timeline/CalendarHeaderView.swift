@@ -5,7 +5,6 @@ struct CalendarHeaderView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Binding var selectedDate: Date
     @Binding var isTwoDayView: Bool
-    var onTapSettings: () -> Void = {}
 
     var body: some View {
         let cal = Calendar.current
@@ -26,19 +25,10 @@ struct CalendarHeaderView: View {
                         .offset(y: -4)
                 }
                 Spacer()
-                HStack(spacing: 8) {
-                    Text(dateText)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(secondary)
-                        .multilineTextAlignment(.trailing)
-                    Button(action: onTapSettings) {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(secondary)
-                            .frame(width: 26, height: 26)
-                    }
-                    .buttonStyle(.plain)
-                }
+                Text(dateText)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(secondary)
+                    .multilineTextAlignment(.trailing)
             }
             .padding(.horizontal, 10)
             .padding(.top, 10)

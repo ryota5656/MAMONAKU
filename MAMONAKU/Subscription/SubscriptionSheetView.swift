@@ -236,8 +236,11 @@ struct SubscriptionSheetView: View {
 
     private func featureComparisonCard(primary: Color, secondary: Color, cardBackground: Color) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            comparisonRow(title: "テーマ選択", free: "システムのみ", plus: "全テーマ利用", primary: primary, secondary: secondary)
+            comparisonRow(title: "テーマ選択", free: "System / Light / Dark", plus: "全テーマ利用", primary: primary, secondary: secondary)
             comparisonRow(title: "標準カレンダー同期", free: "利用不可", plus: "利用可能", primary: primary, secondary: secondary)
+            comparisonRow(title: "開始通知", free: "オン/オフ", plus: "オン/オフ", primary: primary, secondary: secondary)
+//            comparisonRow(title: "Dynamic Island表示", free: "利用不可", plus: "オン/オフ", primary: primary, secondary: secondary)
+            comparisonRow(title: "複数Live Activity表示", free: "利用不可", plus: "オン/オフ", primary: primary, secondary: secondary)
             comparisonRow(title: "バッファ通知", free: "利用不可", plus: "オン/オフ + 分数設定", primary: primary, secondary: secondary)
             comparisonRow(title: "優先度設定", free: "Lowのみ", plus: "Low / Medium / High", primary: primary, secondary: secondary)
         }

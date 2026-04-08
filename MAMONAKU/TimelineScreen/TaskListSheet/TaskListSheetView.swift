@@ -16,8 +16,8 @@ struct TaskListSheetView: View {
     let onDelete: (UUID) -> Void
     /// ドラッグプレビュー等の高さをタイムラインと揃える（ViewModel.heightForDuration を渡す）
     let heightForDuration: (Int) -> CGFloat
-    /// Debug ビルド用: 1分後・15分のテストタスクを置く
-    var onAddDebugTask: (() -> Void)?
+    /// Debug ビルド用: 指定分後に15分のテストタスクを置く
+    var onAddDebugTask: ((Int) -> Void)?
     /// サブスクリプション未加入の場合は優先度を Low のみで登録
     var isSubscribed: Bool = false
     @State private var editMode: EditMode = .inactive
@@ -60,10 +60,12 @@ struct TaskListSheetView: View {
                 }
                 #if DEBUG
                 if let onAddDebugTask {
-                    Button {
-                        onAddDebugTask()
+                    Menu {
+                        Button("+1分テスト") { onAddDebugTask(1) }
+                        Button("+2分テスト") { onAddDebugTask(2) }
+                        Button("+3分テスト") { onAddDebugTask(3) }
                     } label: {
-                        Text("+1分テスト")
+                        Text("デバッグ追加")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(secondary)
                     }

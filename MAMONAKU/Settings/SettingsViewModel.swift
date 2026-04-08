@@ -9,6 +9,8 @@ import Foundation
 import Combine
 import SwiftUI
 import EventKit
+import UserNotifications
+import UIKit
 
 final class SettingsViewModel: ObservableObject {
     private static let calendarSyncEnabledKey = "calendar_sync_enabled"
@@ -48,6 +50,32 @@ final class SettingsViewModel: ObservableObject {
         }
     }
 
+    /// 開始時刻通知のオン/オフ
+    @Published var startNotificationEnabled: Bool = true {
+        didSet {
+            userDefaults?.set(startNotificationEnabled, forKey: AppGroup.startNotificationEnabledKey)
+        }
+    }
+
+    /// Dynamic Island / Live Activity 表示のオン/オフ（加入時のみ保存）
+    @Published var liveActivityEnabled: Bool = true {
+        didSet {
+            guard effectiveIsSubscribed else { return }
+            userDefaults?.set(liveActivityEnabled, forKey: AppGroup.liveActivityEnabledKey)
+        }
+    }
+
+    /// Live Activity 複数表示のオン/オフ（加入時のみ保存）
+    @Published var multipleLiveActivityEnabled: Bool = false {
+        didSet {
+            guard effectiveIsSubscribed else { return }
+            userDefaults?.set(multipleLiveActivityEnabled, forKey: AppGroup.liveActivityMultipleEnabledKey)
+        }
+    }
+
+    /// システム通知が許可されているか
+    @Published var notificationPermissionEnabled: Bool = false
+
     /// サブスクリプション管理（View から注入）
     weak var subscriptionManager: SubscriptionManager? {
         didSet {
@@ -60,6 +88,9 @@ final class SettingsViewModel: ObservableObject {
             loadCalendarSyncEnabled()
             loadGlobalBufferMinutes()
             loadBufferNotificationEnabled()
+            loadStartNotificationEnabled()
+            loadLiveActivityEnabled()
+            loadMultipleLiveActivityEnabled()
             objectWillChange.send()
         }
     }
@@ -75,6 +106,10 @@ final class SettingsViewModel: ObservableObject {
         loadCalendarSyncEnabled()
         loadGlobalBufferMinutes()
         loadBufferNotificationEnabled()
+        loadStartNotificationEnabled()
+        loadLiveActivityEnabled()
+        loadMultipleLiveActivityEnabled()
+        refreshNotificationPermissionStatus()
     }
 
     private func loadCalendarSyncEnabled() {
@@ -100,8 +135,44 @@ final class SettingsViewModel: ObservableObject {
         }
     }
 
+    private func loadStartNotificationEnabled() {
+        let value = userDefaults?.object(forKey: AppGroup.startNotificationEnabledKey) as? Bool ?? true
+        if startNotificationEnabled != value {
+            startNotificationEnabled = value
+        }
+    }
+
+    private func loadLiveActivityEnabled() {
+        let value = userDefaults?.object(forKey: AppGroup.liveActivityEnabledKey) as? Bool ?? true
+        if liveActivityEnabled != value {
+            liveActivityEnabled = value
+        }
+    }
+
+    private func loadMultipleLiveActivityEnabled() {
+        let value = userDefaults?.object(forKey: AppGroup.liveActivityMultipleEnabledKey) as? Bool ?? false
+        if multipleLiveActivityEnabled != value {
+            multipleLiveActivityEnabled = value
+        }
+    }
+
     private static func clampBufferMinutes(_ value: Int) -> Int {
         min(max(value, minGlobalBufferMinutes), maxGlobalBufferMinutes)
+    }
+
+    func refreshNotificationPermissionStatus() {
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            let enabled: Bool
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                enabled = true
+            default:
+                enabled = false
+            }
+            DispatchQueue.main.async {
+                self?.notificationPermissionEnabled = enabled
+            }
+        }
     }
 
     /// サブスクリプション加入状態（StoreKit + DEBUG オーバーライド）
@@ -127,8 +198,23 @@ final class SettingsViewModel: ObservableObject {
         effectiveIsSubscribed
     }
 
-    /// テーマ設定を有効にするか（加入時のみ true）
+    /// テーマ設定は常時有効（無料テーマは未加入でも選択可能）
     var isThemeSettingEnabled: Bool {
+        true
+    }
+
+    /// 現在選択可能なテーマ一覧（未加入時は無料テーマのみ）
+    var availableThemes: [AppPalette] {
+        AppPalette.visibleInSettings
+    }
+
+    /// 現在の加入状態で選択可能なテーマか
+    func canSelectTheme(_ theme: AppPalette) -> Bool {
+        effectiveIsSubscribed || theme.isFreeTheme
+    }
+
+    /// Dynamic Island / Live Activity 設定を有効にするか（加入時のみ true）
+    var isLiveActivitySettingEnabled: Bool {
         effectiveIsSubscribed
     }
 
@@ -207,6 +293,74 @@ final class SettingsViewModel: ObservableObject {
                 self.bufferNotificationEnabled = newValue
             }
         )
+    }
+
+    /// 開始通知オン/オフの Binding
+    var startNotificationEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { [self] in self.startNotificationEnabled },
+            set: { [self] newValue in
+                self.startNotificationEnabled = newValue
+            }
+        )
+    }
+
+    /// Dynamic Island / Live Activity の Binding（未加入時は変更不可）
+    var liveActivityEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { [self] in
+                if effectiveIsSubscribed { return self.liveActivityEnabled }
+                return false
+            },
+            set: { [self] newValue in
+                guard effectiveIsSubscribed else { return }
+                self.liveActivityEnabled = newValue
+            }
+        )
+    }
+
+    /// Live Activity 複数表示の Binding（未加入時は変更不可）
+    var multipleLiveActivityEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { [self] in
+                if effectiveIsSubscribed { return self.multipleLiveActivityEnabled }
+                return false
+            },
+            set: { [self] newValue in
+                guard effectiveIsSubscribed else { return }
+                self.multipleLiveActivityEnabled = newValue
+            }
+        )
+    }
+
+    /// システム通知許可の Binding（ONで許可リクエスト、OFFは設定画面へ誘導）
+    var notificationPermissionBinding: Binding<Bool> {
+        Binding(
+            get: { [self] in self.notificationPermissionEnabled },
+            set: { [self] newValue in
+                if newValue {
+                    requestNotificationPermission()
+                } else {
+                    openAppSettings()
+                    refreshNotificationPermissionStatus()
+                }
+            }
+        )
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] _, _ in
+            self?.refreshNotificationPermissionStatus()
+        }
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        DispatchQueue.main.async {
+            if UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url)
+            }
+        }
     }
 
     /// バッファ分を +5（1分のときだけ + で 5分に補正）

@@ -15,19 +15,9 @@ struct ScheduleItemView: View {
     var onComplete: (() -> Void)? = nil
     var onUncomplete: (() -> Void)? = nil
     private let cornerRadius: CGFloat = 12
-    private let leftBarWidth: CGFloat = 6
+    private let leftBarWidth: CGFloat = 16
     @State private var isBubbleVisible = false
     @State private var isBubbleWiggling = false
-
-    private var cardColor: Color {
-        let colors = AppColors.itemCardColors(palette: themeManager.theme, environmentScheme: colorScheme)
-        let index = abs(item.id.hashValue) % max(colors.count, 1)
-        return colors[min(index, colors.count - 1)]
-    }
-
-    private var leftBarColor: Color {
-        cardColor.opacity(0.85)
-    }
 
     private var startTimeText: String {
         guard let start = item.startMinutes else { return "" }
@@ -36,43 +26,72 @@ struct ScheduleItemView: View {
         return String(format: "%02d:%02d", h, m)
     }
 
+    private var endTimeText: String {
+        guard let start = item.startMinutes else { return "" }
+        let endMinutes = (start + item.durationMinutes) % (24 * 60)
+        let h = endMinutes / 60
+        let m = endMinutes % 60
+        return String(format: "%02d:%02d", h, m)
+    }
+
+    private var timeRangeText: String {
+        guard !startTimeText.isEmpty else { return "" }
+        return "\(startTimeText) - \(endTimeText)"
+    }
+
+    private var surfaceColor: Color {
+        AppColors.settingsListBackground(palette: themeManager.theme, environmentScheme: colorScheme)
+    }
+
+    private var primaryTextColor: Color {
+        AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
+    }
+
+    private var secondaryTextColor: Color {
+        AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
+    }
+
+    private var leftRailColor: Color {
+        AppColors.itemCardColors(palette: themeManager.theme, environmentScheme: colorScheme).first ?? .white
+    }
+
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topTrailing) {
-                HStack(spacing: 0) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.white)
+                HStack(alignment: .top, spacing: 12) {
+                    Capsule(style: .continuous)
+                        .fill(leftRailColor)
                         .frame(width: leftBarWidth)
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 10)
+                        .frame(maxHeight: .infinity)
+                        .overlay(alignment: .center) {
+                            if geo.size.height >= 56 {
+//                                Image(systemName: "heart.fill")
+//                                    .font(.system(size: 12, weight: .semibold))
+//                                    .foregroundStyle(surfaceColor.opacity(0.95))
+                            }
+                        }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        if showTimeRange, !startTimeText.isEmpty {
-                            Text(startTimeText)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.9))
+                    VStack(alignment: .leading) {
+                        if showTimeRange, !timeRangeText.isEmpty {
+                            Text(timeRangeText)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(secondaryTextColor)
                         }
-                        HStack(spacing: 6) {
-                            PriorityIconView(
-                                priority: item.priority,
-                                color: .white,
-                                size: 14
-                            )
-                            Text(item.title)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .lineLimit(2)
-                        }
+
+                        Text(item.title)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(primaryTextColor)
+                            .lineLimit(2)
+//                            .padding(.top, 1)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+//                .padding(.horizontal, 12)
+//                .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .frame(width: geo.size.width, height: geo.size.height)
-                .background(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(cardColor)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .background(Color.clear)
+//                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
@@ -112,6 +131,15 @@ struct ScheduleItemView: View {
                     .zIndex(1)
             }
         }
+        .overlay {
+            if isEditing {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(AppColors.itemCardColors(palette: themeManager.theme, environmentScheme: colorScheme).first ?? .white, style: StrokeStyle(lineWidth: 1.5, dash: [4, 9]))
+            } else {
+                //                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                //                    .stroke(AppColors.cardStroke(palette: themeManager.theme, environmentScheme: colorScheme), style: StrokeStyle(lineWidth: 1.5, dash: [100, 0]))
+            }
+        }
 //        .overlay(
 //            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 //                .stroke(
@@ -123,21 +151,12 @@ struct ScheduleItemView: View {
 //            RoundedRectangle(cornerRadius: 10, style: .continuous)
 //                .fill(AppColors.accent.opacity(0.01))
 //        )
-        .overlay {
-            if isEditing {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(AppColors.cardStroke(palette: themeManager.theme, environmentScheme: colorScheme), style: StrokeStyle(lineWidth: 1.5, dash: [4, 9]))
-            } else {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(AppColors.cardStroke(palette: themeManager.theme, environmentScheme: colorScheme), style: StrokeStyle(lineWidth: 1.5, dash: [100, 0]))
-            }
-        }
         .overlay(alignment: .topTrailing) {
             if item.isCompleted, let onUncomplete {
                 Button(action: onUncomplete) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 22))
-                        .foregroundStyle(.white.opacity(0.95))
+                        .foregroundStyle(primaryTextColor.opacity(0.9))
                         .symbolRenderingMode(.hierarchical)
                 }
                 .buttonStyle(.plain)
@@ -146,7 +165,7 @@ struct ScheduleItemView: View {
                 Button(action: onComplete) {
                     Image(systemName: "checkmark.circle")
                         .font(.system(size: 22))
-                        .foregroundStyle(.white.opacity(0.95))
+                        .foregroundStyle(primaryTextColor.opacity(0.9))
                         .symbolRenderingMode(.hierarchical)
                 }
                 .buttonStyle(.plain)
@@ -175,7 +194,7 @@ struct ScheduleItemView: View {
     // 下に伸ばせることを示す丸
     private var resizeHandleDot: some View {
         Circle()
-            .fill(cardColor)
+            .fill(leftRailColor)
             .frame(width: 8, height: 8)
             .offset(y: 3)
     }

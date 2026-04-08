@@ -7,7 +7,6 @@ struct WhiteSheetView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @ObservedObject var viewModel: TimelineViewModel
     @Binding var sheetHeight: CGFloat
-    var onTapSettings: () -> Void = {}
     @State private var lastMagnification: CGFloat = 1.0
     @State private var tabSelection: Date = Calendar.current.startOfDay(for: Date())
     /// スワイプで配列がずれないよう、TabView の日付範囲の中心を固定する（カレンダーで遠い日を選んだときだけ更新）
@@ -32,29 +31,35 @@ struct WhiteSheetView: View {
             VStack(spacing: 10) {
                 CalendarHeaderView(
                     selectedDate: $viewModel.selectedDate,
-                    isTwoDayView: $viewModel.isTwoDayView,
-                    onTapSettings: onTapSettings
+                    isTwoDayView: $viewModel.isTwoDayView
                 )
                 
                 TabView(selection: $tabSelection) {
                     ForEach(datesForTab, id: \.self) { date in
+                        let allDayItems = viewModel.allDayItems(for: date)
                         ScrollViewReader { scrollProxy in
                             ScrollView(.vertical, showsIndicators: false) {
-                                HStack(alignment: .top, spacing: 0) {
-                                    timeColumn
-                                    singleDayTimelineColumn(date: date)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    if !allDayItems.isEmpty {
+                                        allDayTagRow(items: allDayItems)
+                                    }
+
+                                    HStack(alignment: .top, spacing: 0) {
+                                        timeColumn
+                                        singleDayTimelineColumn(date: date)
+                                    }
+                                    .background(
+                                        Color.clear
+                                            .contentShape(Rectangle())
+                                            .onTapGesture {
+                                                if viewModel.editMode.isEditing {
+                                                    viewModel.exitEditMode()
+                                                }
+                                            }
+                                    )
+                                    .simultaneousGesture(magnificationGesture)
                                 }
                                 .padding(.bottom, 500) //GAD入れても良い
-                                .background(
-                                    Color.clear
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
-                                            if viewModel.editMode.isEditing {
-                                                viewModel.exitEditMode()
-                                            }
-                                        }
-                                )
-                                .simultaneousGesture(magnificationGesture)
                             }
                             .onAppear {
                                 centerCurrentTimeIfNeeded(on: date, with: scrollProxy)
@@ -153,10 +158,17 @@ struct WhiteSheetView: View {
     private func dayTimelineColumn(date: Date, width: CGFloat, height: CGFloat) -> some View {
         let items = viewModel.items(for: date)
         let itemWidth = max(80, width - (viewModel.timelinePadding * 0.5))
-        let showTimeThreshold: CGFloat = 50
+        let showTimeThreshold: CGFloat = 30
 
         return ZStack(alignment: .topLeading) {
             timelineGrid(width: width, height: height)
+            
+            // グリッドの縦ライン
+            Rectangle()
+                .fill(AppColors.gridLine(palette: themeManager.theme, environmentScheme: colorScheme))
+                .frame(width: 1, height: height)
+                .offset(x: 7)
+                .allowsHitTesting(false)
 
             // 背面のタップ層（空き領域タップで編集モード解除 or 仮配置取り消し）
             Color.primary.opacity(0.001)
@@ -303,6 +315,33 @@ struct WhiteSheetView: View {
         )
     }
 
+    private func allDayTagRow(items: [TimelineItem]) -> some View {
+        let textColor = AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
+        let chipBackground = AppColors.settingsListBackground(palette: themeManager.theme, environmentScheme: colorScheme)
+
+        return HStack(alignment: .center, spacing: 0) {
+            Color.clear
+                .frame(width: viewModel.timeColumnWidth)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(items) { item in
+                        Text(item.title)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(textColor)
+                            .lineLimit(1)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(chipBackground)
+                            )
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - 現在時間の位置ライン
     private func currentTimeLine(width: CGFloat) -> some View {
         TimelineView(.animation) { context in
@@ -412,16 +451,11 @@ private struct PendingPlacementCardView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(Color.white)
-                .frame(width: 6)
-                .padding(10)
-
             TextField("タイトルを入力", text: $title)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8)
+                .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
+                .padding(.horizontal, 20)
                 .padding(.vertical, 6)
                 .submitLabel(.done)
                 .onSubmit {
@@ -433,11 +467,11 @@ private struct PendingPlacementCardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AppColors.pendingCardBackground(palette: themeManager.theme, environmentScheme: colorScheme))
+                .fill(AppColors.settingsListBackground(palette: themeManager.theme, environmentScheme: colorScheme))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(AppColors.pendingCardStroke(palette: themeManager.theme, environmentScheme: colorScheme), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                .stroke(AppColors.gridLine(palette: themeManager.theme, environmentScheme: colorScheme), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
         )
     }
 }

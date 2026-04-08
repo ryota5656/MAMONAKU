@@ -22,10 +22,14 @@ struct TimelineScreen: View {
     @State private var isSettingsPresented = false
     @State private var isDeleteButtonTargeted = false
     @State private var isReturnToStockTargeted = false
+    @State private var isLiveActivityRefreshing = false
     @AppStorage("tutorial.firstRun.completed") private var isFirstRunTutorialCompleted: Bool = false
     @State private var tutorialStep: TutorialStep? = nil
     @State private var tutorialPulse: Bool = false
-    private let isRadialMenuEnabled = false
+    private let isRadialMenuEnabled = true
+    private var isRunningInPreview: Bool {
+        ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+    }
 
     init() {
         _viewModel = StateObject(wrappedValue: TimelineViewModel())
@@ -41,288 +45,322 @@ struct TimelineScreen: View {
     }
 
     var body: some View {
-            ZStack(alignment: .top) {
-                CountdownHeaderView(
-                    items: viewModel.items,
-                    isExpanded: $isHeaderExpanded
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
+        ZStack(alignment: .top) {
+            headerSection
+            whiteSheetSection
+        }
+        .overlay(alignment: .top) { tutorialTopOverlay }
+        .overlay { liveActivityLoadingOverlay }
+        .sheet(isPresented: $isTaskSheetPresented) { taskSheetContent }
+        .onChange(of: viewModel.dropPreview) { _, preview in
+            guard isTaskSheetPresented, isDraggingTask, preview != nil else { return }
+            isDraggingTask = false
+            isTaskSheetPresented = false
+        }
+        .overlay(alignment: .bottomLeading) { leftBottomOverlay }
+        .overlay(alignment: .bottomTrailing) { rightBottomOverlay }
+        .onPreferenceChange(HeaderHeightKey.self) { value in
+            headerHeight = value
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .sheet(isPresented: $isSettingsPresented) {
+            SettingsView()
+        }
+        .onAppear {
+            startFirstRunTutorialIfNeeded()
+        }
+        .onChange(of: viewModel.items) { _, _ in
+            if tutorialStep == .placeTaskAfterNow, hasPlacedTutorialTaskAfterNow() {
+                tutorialStep = .confirmCountdown
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+//            if newPhase == .active {
+//                Task {
+//                    await viewModel.resetLiveActivity()
+//                }
+//            } else if newPhase == .inactive {
+//                Task {
+//                    await viewModel.startOrUpdateLiveActivity()
+//                }
+//            }
+        }
+    }
+
+    private var headerSection: some View {
+        CountdownHeaderView(
+            items: viewModel.items,
+            isExpanded: $isHeaderExpanded
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(key: HeaderHeightKey.self, value: proxy.size.height)
+            }
+        )
+    }
+
+    private var whiteSheetSection: some View {
+        WhiteSheetView(
+            viewModel: viewModel,
+            sheetHeight: $sheetHeight
+        )
+        .offset(y: isHeaderExpanded ? (headerHeight + 12) : 0)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isHeaderExpanded)
+    }
+
+    @ViewBuilder
+    private var tutorialTopOverlay: some View {
+        if let tutorialStep {
+            tutorialOverlay(step: tutorialStep)
+                .padding(.top, tutorialStep == .confirmCountdown ? 150 : 14)
+                .padding(.horizontal, 16)
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutorialStep)
+        }
+    }
+
+    @ViewBuilder
+    private var liveActivityLoadingOverlay: some View {
+        if isLiveActivityRefreshing {
+            ZStack {
+                Color.black.opacity(0.18)
+                    .ignoresSafeArea()
+                VStack(spacing: 10) {
+                    ProgressView()
+                    Text("Live Activityを作成中…")
+                        .font(.footnote.weight(.semibold))
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
                 .background(
-                    GeometryReader { proxy in
-                        Color.clear
-                            .preference(key: HeaderHeightKey.self, value: proxy.size.height)
-                    }
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(.systemBackground))
                 )
+            }
+        }
+    }
 
-                WhiteSheetView(
-                    viewModel: viewModel,
-                    sheetHeight: $sheetHeight,
-                    onTapSettings: { isSettingsPresented = true }
+    private var taskSheetContent: some View {
+        TaskListSheetView(
+            items: viewModel.items,
+            isPresented: $isTaskSheetPresented,
+            isDraggingTask: $isDraggingTask,
+            isSheetDropTargeted: $isSheetDropTargeted,
+            dragItemID: $viewModel.dragItemID,
+            isSheetExpanded: $viewModel.chipsExpanded,
+            isSheetDraggable: $isTaskSheetDraggable,
+            onMove: { from, to in
+                viewModel.moveTaskItems(from: from, to: to)
+            },
+            onAdd: { title, durationMinutes, priority in
+                viewModel.addStockItem(title: title, durationMinutes: durationMinutes, priority: priority)
+            },
+            onDelete: { id in
+                viewModel.deleteItem(id: id)
+            },
+            heightForDuration: { viewModel.heightForDuration($0) },
+            onAddDebugTask: { minutes in
+                viewModel.addTestTask(
+                    startDate: Date().addingTimeInterval(TimeInterval(minutes * 60)),
+                    durationMinutes: 15
                 )
-                .offset(y: isHeaderExpanded ? (headerHeight + 12) : 0)
-                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isHeaderExpanded)
+            },
+            isSubscribed: subscriptionManager.effectiveIsSubscribed
+        )
+        .presentationDetents(
+            isTaskSheetDraggable ? [.fraction(0.45), .large] : [taskSheetDetent],
+            selection: $taskSheetDetent
+        )
+        .presentationDragIndicator(isTaskSheetDraggable ? .visible : .hidden)
+        .presentationBackgroundInteraction(.enabled)
+        .interactiveDismissDisabled(!isTaskSheetDraggable)
+    }
 
+    private var leftBottomOverlay: some View {
+        AnyView(
+            Group {
+                let primary = AppColors.primary(palette: themeManager.theme, environmentScheme: colorScheme)
+                let onAccent = AppColors.onAccent(palette: themeManager.theme, environmentScheme: colorScheme)
+                if viewModel.editMode.isEditing {
+                    ItemDropTarget(
+                        onDrop: { viewModel.deleteItem(id: $0) },
+                        onDragEntered: {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            isDeleteButtonTargeted = true
+                        },
+                        onDragExited: { isDeleteButtonTargeted = false }
+                    )
+                    .frame(width: 44, height: 44)
+                    .zIndex(1)
+                    .overlay(alignment: .center) {
+                        ZStack {
+                            Image(systemName: "trash.circle.fill")
+                                .font(.system(size: 35))
+                                .foregroundStyle(primary)
+                                .shadow(color: Color.primary.opacity(0.2), radius: 6, x: 0, y: 3)
+                        }
+                        .scaleEffect(isDeleteButtonTargeted ? 1.15 : 1.0)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isDeleteButtonTargeted)
+                        .allowsHitTesting(false)
+                    }
+                } else {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            isHeaderExpanded.toggle()
+                        }
+                    } label: {
+                        Image(systemName: isHeaderExpanded ? "chevron.down.circle.fill" : "chevron.up.circle.fill")
+                            .font(.system(size: 35))
+                            .foregroundStyle(primary)
+                            .shadow(color: onAccent.opacity(0.2), radius: 6, x: 0, y: 3)
+                    }
+                    .frame(width: 44, height: 44)
                 }
-                .overlay(alignment: .top) {
-                    if let tutorialStep {
-                        tutorialOverlay(step: tutorialStep)
-                            .padding(.top, tutorialStep == .confirmCountdown ? 150 : 14)
-                            .padding(.horizontal, 16)
-                            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutorialStep)
+            }
+            .padding(.leading, 30)
+            .padding(.bottom, 20)
+        )
+    }
+
+    private var rightBottomOverlay: some View {
+        AnyView(
+            ZStack {
+                let primary = AppColors.primary(palette: themeManager.theme, environmentScheme: colorScheme)
+                let onAccent = AppColors.onAccent(palette: themeManager.theme, environmentScheme: colorScheme)
+                if isRadialMenuEnabled && isRadialMenuVisible {
+                    radialMenu
+                }
+
+                if viewModel.editMode.isEditing {
+                    ItemDropTarget(
+                        onDrop: { viewModel.returnItemToStock(id: $0) },
+                        onDragEntered: {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            isReturnToStockTargeted = true
+                        },
+                        onDragExited: { isReturnToStockTargeted = false }
+                    )
+                    .frame(width: 35, height: 35)
+                    .zIndex(1)
+                    .overlay(alignment: .center) {
+                        ZStack {
+                            Circle()
+                                .foregroundStyle(primary)
+                            Image(systemName: "tray.and.arrow.down")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(onAccent)
+                                .shadow(color: Color.primary.opacity(0.2), radius: 8, x: 0, y: 4)
+                        }
+                        .frame(width: 35, height: 35)
+                        .scaleEffect(isReturnToStockTargeted ? 1.15 : 1.0)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isReturnToStockTargeted)
+                        .allowsHitTesting(false)
                     }
                 }
-                .sheet(isPresented: $isTaskSheetPresented) {
-                    TaskListSheetView(
-                        items: viewModel.items,
-                        isPresented: $isTaskSheetPresented,
-                        isDraggingTask: $isDraggingTask,
-                        isSheetDropTargeted: $isSheetDropTargeted,
-                        dragItemID: $viewModel.dragItemID,
-                        isSheetExpanded: $viewModel.chipsExpanded,
-                        isSheetDraggable: $isTaskSheetDraggable,
-                        onMove: { from, to in
-                            viewModel.moveTaskItems(from: from, to: to)
-                        },
-                        onAdd: { title, durationMinutes, priority in
-                            viewModel.addStockItem(title: title, durationMinutes: durationMinutes, priority: priority)
-                        },
-                        onDelete: { id in
-                            viewModel.deleteItem(id: id)
-                        },
-                        heightForDuration: { viewModel.heightForDuration($0) },
-                        onAddDebugTask: {
-                            viewModel.addTestTask(startDate: Date().addingTimeInterval(90), durationMinutes: 15)
-                        },
-                        isSubscribed: subscriptionManager.effectiveIsSubscribed
-                    )
-                    .presentationDetents(
-                        isTaskSheetDraggable ? [.fraction(0.45), .large] : [taskSheetDetent],
-                        selection: $taskSheetDetent
-                    )
-                    .presentationDragIndicator(isTaskSheetDraggable ? .visible : .hidden)
-                    .presentationBackgroundInteraction(.enabled)
-                    .interactiveDismissDisabled(!isTaskSheetDraggable)
-                }
-                .onChange(of: viewModel.dropPreview) { _, preview in
-                    guard isTaskSheetPresented, isDraggingTask, preview != nil else { return }
-                    isDraggingTask = false
-                    isTaskSheetPresented = false
-                }
-                // MARK: - 左の展開マーク
-                .overlay(alignment: .bottomLeading) {
-                    Group {
-                        let primary = AppColors.primary(palette: themeManager.theme, environmentScheme: colorScheme)
-                        let onAccent = AppColors.onAccent(palette: themeManager.theme, environmentScheme: colorScheme)
-                        if viewModel.editMode.isEditing {
-                            ItemDropTarget(
-                                onDrop: { viewModel.deleteItem(id: $0) },
-                                onDragEntered: {
-                                    let generator = UIImpactFeedbackGenerator(style: .light)
-                                    generator.prepare()
-                                    generator.impactOccurred()
-                                    isDeleteButtonTargeted = true
-                                },
-                                onDragExited: { isDeleteButtonTargeted = false }
-                            )
-                                .frame(width: 44, height: 44)
-                                .zIndex(1)
-                                .overlay(alignment: .center) {
-                                    ZStack {
-                                        Image(systemName: "trash.circle.fill")
-                                            .font(.system(size: 35))
-                                            .foregroundStyle(primary)
-                                            .shadow(color: Color.primary.opacity(0.2), radius: 6, x: 0, y: 3)
-                                    }
-                                    .scaleEffect(isDeleteButtonTargeted ? 1.15 : 1.0)
-                                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isDeleteButtonTargeted)
-                                    .allowsHitTesting(false)
-                                }
-                        } else {
-                            Button {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    isHeaderExpanded.toggle()
-                                }
-                            } label: {
-                                Image(systemName: isHeaderExpanded ? "chevron.down.circle.fill" : "chevron.up.circle.fill")
-                                    .font(.system(size: 35))
-                                    .foregroundStyle(primary)
-                                    .shadow(color: onAccent.opacity(0.2), radius: 6, x: 0, y: 3)
-                            }
-                            .frame(width: 44, height: 44)
-                        }
-                    }
-                    .padding(.leading, 30)
-                    .padding(.bottom, 20)
-                }
-                // MARK: - 右のプラスマーク
-                .overlay(alignment: .bottomTrailing) {
-                    ZStack {
-                        let primary = AppColors.primary(palette: themeManager.theme, environmentScheme: colorScheme)
-                        let onAccent = AppColors.onAccent(palette: themeManager.theme, environmentScheme: colorScheme)
-                        if isRadialMenuEnabled && isRadialMenuVisible {
-                            radialMenu
-                        }
 
-                        // 編集モード中: ストックに戻す（ドロップでストックに戻す）。位置・サイズは通常時のプラスボタンと同じ。
-                        if viewModel.editMode.isEditing {
-                            ItemDropTarget(
-                                onDrop: { viewModel.returnItemToStock(id: $0) },
-                                onDragEntered: {
-                                    let generator = UIImpactFeedbackGenerator(style: .light)
-                                    generator.prepare()
-                                    generator.impactOccurred()
-                                    isReturnToStockTargeted = true
-                                },
-                                onDragExited: { isReturnToStockTargeted = false }
-                            )
-                                .frame(width: 35, height: 35)
-                                .zIndex(1)
-                                .overlay(alignment: .center) {
-                                    ZStack {
-                                        Circle()
-                                            .foregroundStyle(primary)
-                                        Image(systemName: "tray.and.arrow.down")
-                                            .font(.system(size: 18, weight: .bold))
-                                            .foregroundStyle(onAccent)
-                                            .shadow(color: Color.primary.opacity(0.2), radius: 8, x: 0, y: 4)
-                                    }
-                                    .frame(width: 35, height: 35)
-                                    .scaleEffect(isReturnToStockTargeted ? 1.15 : 1.0)
-                                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isReturnToStockTargeted)
-                                    .allowsHitTesting(false)
-                                }
+                if !viewModel.editMode.isEditing {
+                    if isRadialMenuEnabled {
+                        ZStack {
+                            Circle()
+                                .foregroundStyle(primary)
+                            Image(systemName: "plus")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(onAccent)
+                                .shadow(color: Color.primary.opacity(0.2), radius: 8, x: 0, y: 4)
                         }
-
-                        if !viewModel.editMode.isEditing {
-                            if isRadialMenuEnabled {
-                                ZStack {
-                                    Circle()
-                                        .foregroundStyle(primary)
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 20, weight: .bold))
-                                        .foregroundStyle(onAccent)
-                                        .shadow(color: Color.primary.opacity(0.2), radius: 8, x: 0, y: 4)
-                                }
-                                .frame(width: 35, height: 35)
-                                .overlay {
-                                    if tutorialStep == .openTaskList {
-                                        Circle()
-                                            .stroke(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme), lineWidth: 3)
-                                            .scaleEffect(tutorialPulse ? 1.35 : 1.05)
-                                            .opacity(tutorialPulse ? 0.2 : 0.9)
-                                            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: tutorialPulse)
-                                            .onAppear { tutorialPulse = true }
-                                    }
-                                }
-                                .contentShape(Circle())
-                                .onTapGesture {
-                                    isTaskSheetPresented = true
-                                    if tutorialStep == .openTaskList {
-                                        tutorialStep = .placeTaskAfterNow
-                                    }
-                                }
-                                .gesture(
-                                    DragGesture(minimumDistance: 0)
-                                        .onChanged { value in
-                                            if !isRadialMenuVisible {
-                                                withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
-                                                    isRadialMenuVisible = true
-                                                    radialSelection = nil
-                                                }
-                                            }
-                                            let selection = radialAction(at: value.location, in: CGSize(width: 52, height: 52))
-                                            radialSelection = selection
-                                            if selection != nil, selection != lastHapticSelection {
-                                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                                generator.prepare()
-                                                generator.impactOccurred()
-                                                lastHapticSelection = selection
-                                            }
-                                        }
-                                        .onEnded { _ in
-                                            if isRadialMenuVisible, let selection = radialSelection {
-                                                trigger(action: selection)
-                                            }
-                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
-                                                isRadialMenuVisible = false
-                                                radialSelection = nil
-                                                lastHapticSelection = nil
-                                            }
-                                        }
-                                )
-                            } else {
-                            ZStack {
+                        .frame(width: 35, height: 35)
+                        .overlay {
+                            if tutorialStep == .openTaskList || tutorialStep == .explainLiveActivityFromPlus{
                                 Circle()
-                                    .foregroundStyle(primary)
-                                Image(systemName: "plus")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundStyle(onAccent)
-                                    .shadow(color: Color.primary.opacity(0.2), radius: 8, x: 0, y: 4)
+                                    .stroke(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme), lineWidth: 3)
+                                    .scaleEffect(tutorialPulse ? 1.35 : 1.05)
+                                    .opacity(tutorialPulse ? 0.2 : 0.9)
+                                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: tutorialPulse)
+                                    .onAppear { tutorialPulse = true }
                             }
-                            .frame(width: 35, height: 35)
-                            .overlay {
-                                if tutorialStep == .openTaskList {
-                                    Circle()
-                                        .stroke(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme), lineWidth: 3)
-                                        .scaleEffect(tutorialPulse ? 1.35 : 1.05)
-                                        .opacity(tutorialPulse ? 0.2 : 0.9)
-                                        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: tutorialPulse)
-                                        .onAppear { tutorialPulse = true }
+                        }
+                        .contentShape(Circle())
+                        .onTapGesture {
+                            isTaskSheetPresented = true
+                            if tutorialStep == .openTaskList {
+                                tutorialStep = .placeTaskAfterNow
+                            }
+                        }
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    if !isRadialMenuVisible {
+                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                                            isRadialMenuVisible = true
+                                            radialSelection = nil
+                                        }
+                                    }
+                                    let selection = radialAction(at: value.location, in: CGSize(width: 52, height: 52))
+                                    radialSelection = selection
+                                    if selection != nil, selection != lastHapticSelection {
+                                        let generator = UIImpactFeedbackGenerator(style: .light)
+                                        generator.prepare()
+                                        generator.impactOccurred()
+                                        lastHapticSelection = selection
+                                    }
                                 }
-                            }
-                            .contentShape(Circle())
-                            .onTapGesture {
-                                isTaskSheetPresented = true
-                                if tutorialStep == .openTaskList {
-                                    tutorialStep = .placeTaskAfterNow
+                                .onEnded { _ in
+                                    if isRadialMenuVisible, let selection = radialSelection {
+                                        trigger(action: selection)
+                                    }
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                                        isRadialMenuVisible = false
+                                        radialSelection = nil
+                                        lastHapticSelection = nil
+                                    }
                                 }
+                        )
+                    } else {
+                        ZStack {
+                            Circle()
+                                .foregroundStyle(primary)
+                            Image(systemName: "plus")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(onAccent)
+                                .shadow(color: Color.primary.opacity(0.2), radius: 8, x: 0, y: 4)
+                        }
+                        .frame(width: 35, height: 35)
+                        .overlay {
+                            if tutorialStep == .openTaskList || tutorialStep == .explainLiveActivityFromPlus{
+                                Circle()
+                                    .stroke(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme), lineWidth: 3)
+                                    .scaleEffect(tutorialPulse ? 1.35 : 1.05)
+                                    .opacity(tutorialPulse ? 0.2 : 0.9)
+                                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: tutorialPulse)
+                                    .onAppear { tutorialPulse = true }
                             }
+                        }
+                        .contentShape(Circle())
+                        .onTapGesture {
+                            isTaskSheetPresented = true
+                            if tutorialStep == .openTaskList {
+                                tutorialStep = .placeTaskAfterNow
                             }
                         }
                     }
-                    .padding(.trailing, 30)
-                    .padding(.bottom, 20)
-                }
-            .onPreferenceChange(HeaderHeightKey.self) { value in
-                headerHeight = value
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .sheet(isPresented: $isSettingsPresented) {
-                SettingsView()
-            }
-//            .background(
-//                Color.clear
-//                    .contentShape(Rectangle())
-//                    .onTapGesture {
-//                        if viewModel.editMode.isEditing {
-//                            viewModel.editMode = .inactive
-//                        }
-//                    }
-//            )
-            .onAppear {
-                viewModel.updateLiveActivity()
-                startFirstRunTutorialIfNeeded()
-            }
-            .onChange(of: viewModel.items) { _, _ in
-                viewModel.updateLiveActivity()
-                if tutorialStep == .placeTaskAfterNow, hasPlacedTutorialTaskAfterNow() {
-                    tutorialStep = .confirmCountdown
                 }
             }
-            .onChange(of: scenePhase) { _, newPhase in
-                switch newPhase {
-                case .active:
-                    viewModel.updateLiveActivity()
-                case .inactive, .background:
-                    viewModel.updateLiveActivity()
-                @unknown default:
-                    break
-                }
-            }
+            .padding(.trailing, 30)
+            .padding(.bottom, 20)
+        )
     }
 
     private func startFirstRunTutorialIfNeeded() {
+        guard !isRunningInPreview else {
+            tutorialStep = nil
+            return
+        }
         guard !isFirstRunTutorialCompleted else { return }
         ensureTutorialTaskExists()
         tutorialStep = .openTaskList
@@ -344,6 +382,13 @@ struct TimelineScreen: View {
         }
     }
 
+    private func refreshLiveActivityManually() async {
+        guard !isLiveActivityRefreshing else { return }
+        await MainActor.run { isLiveActivityRefreshing = true }
+        await viewModel.startOrUpdateLiveActivity()
+        await MainActor.run { isLiveActivityRefreshing = false }
+    }
+
     @ViewBuilder
     private func tutorialOverlay(step: TutorialStep) -> some View {
         let primary = AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
@@ -358,19 +403,9 @@ struct TimelineScreen: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(primary)
                 .fixedSize(horizontal: false, vertical: true)
-            if let action = step.actionTitle {
-                Button(action) {
-                    switch step {
-                    case .confirmCountdown:
-                        tutorialStep = .explainLongPress
-                    case .explainLongPress:
-                        tutorialStep = .goLockScreen
-                    case .goLockScreen:
-                        tutorialStep = nil
-                        isFirstRunTutorialCompleted = true
-                    default:
-                        break
-                    }
+            HStack(spacing: 10) {
+                Button(step.primaryButtonTitle) {
+                    advanceTutorialStep(from: step)
                 }
                 .font(.caption.weight(.bold))
                 .padding(.horizontal, 12)
@@ -393,6 +428,24 @@ struct TimelineScreen: View {
                 .stroke(secondary.opacity(0.22), lineWidth: 1)
         )
     }
+
+    private func advanceTutorialStep(from step: TutorialStep) {
+        switch step {
+        case .openTaskList:
+            tutorialStep = .placeTaskAfterNow
+        case .placeTaskAfterNow:
+            tutorialStep = .confirmCountdown
+        case .confirmCountdown:
+            tutorialStep = .explainLongPress
+        case .explainLongPress:
+            tutorialStep = .explainLiveActivityFromPlus
+        case .explainLiveActivityFromPlus:
+            tutorialStep = .goLockScreen
+        case .goLockScreen:
+            tutorialStep = nil
+            isFirstRunTutorialCompleted = true
+        }
+    }
 }
 
 private enum TutorialStep {
@@ -400,6 +453,7 @@ private enum TutorialStep {
     case placeTaskAfterNow
     case confirmCountdown
     case explainLongPress
+    case explainLiveActivityFromPlus
     case goLockScreen
 
     var message: String {
@@ -412,19 +466,19 @@ private enum TutorialStep {
             return "残り時間が表示されることを確認できました。次へ進みましょう。"
         case .explainLongPress:
             return "タイムライン上を長押しすると、その位置に新しいアイテムをすぐ置けます。"
+        case .explainLiveActivityFromPlus:
+            return "プラスボタンを押しながら上にスライドすると、ロック画面にカウントダウンが表示されるようになります。"
         case .goLockScreen:
             return "最後にロック画面で時刻表示（Live Activity）を確認して、チュートリアル完了です。"
         }
     }
 
-    var actionTitle: String? {
+    var primaryButtonTitle: String {
         switch self {
-        case .confirmCountdown, .explainLongPress:
-            return "次へ"
         case .goLockScreen:
             return "チュートリアル完了"
         default:
-            return nil
+            return "次へ"
         }
     }
 }
@@ -525,23 +579,20 @@ private struct HeaderHeightKey: PreferenceKey {
 }
 
 private enum RadialAction: CaseIterable {
-    case actionA
-//    case actionB
-//    case actionC
+    case settings
+    case refreshLiveActivity
 
     var icon: String {
         switch self {
-        case .actionA: return "gearshape"
-//        case .actionB: return "clock"
-//        case .actionC: return "flag"
+        case .settings: return "gearshape.fill"
+        case .refreshLiveActivity: return "arrow.clockwise"
         }
     }
 
     var offset: CGSize {
         switch self {
-        case .actionA: return CGSize(width: -110, height: 0)
-//        case .actionB: return CGSize(width: 0, height: -110)
-//        case .actionC: return CGSize(width: -80, height: -80)
+        case .settings: return CGSize(width: -92, height: -56)
+        case .refreshLiveActivity: return CGSize(width: 0, height: -110)
         }
     }
 }
@@ -588,12 +639,11 @@ private extension TimelineScreen {
     }
 
     func trigger(action: RadialAction) {
-        // Placeholder: implement specific actions later.
         switch action {
-        case .actionA:
+        case .settings:
             isSettingsPresented = true
-//        case .actionB, .actionC:
-//            break
+        case .refreshLiveActivity:
+            Task { await refreshLiveActivityManually() }
         }
     }
 }
@@ -624,3 +674,4 @@ private extension TimelineScreen {
     .environmentObject(SubscriptionManager())
     .environmentObject(ThemeManager())
 }
+

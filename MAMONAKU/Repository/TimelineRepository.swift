@@ -46,7 +46,7 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         }
         let config = Realm.Configuration(
             fileURL: realmURL,
-            schemaVersion: 4,
+            schemaVersion: 5,
             migrationBlock: { _, oldSchemaVersion in
                 if oldSchemaVersion < 2 {
                     // Automatic migration is sufficient for added properties.
@@ -56,6 +56,9 @@ final class TimelineRepository: TimelineRepositoryProtocol {
                 }
                 if oldSchemaVersion < 4 {
                     // priority added; default 1 (medium) is applied by Realm.
+                }
+                if oldSchemaVersion < 5 {
+                    // isAllDay added; default false is applied by Realm.
                 }
             }
         )
@@ -293,8 +296,9 @@ final class TimelineRepository: TimelineRepositoryProtocol {
                             item: TimelineItem(
                                 title: event.title,
                                 durationMinutes: max(1, Int(event.endDate.timeIntervalSince(event.startDate) / 60)),
-                                startMinutes: minutesSinceMidnight(date: event.startDate),
-                                dropDate: Calendar.current.startOfDay(for: event.startDate)
+                                startMinutes: event.isAllDay ? nil : minutesSinceMidnight(date: event.startDate),
+                                dropDate: Calendar.current.startOfDay(for: event.startDate),
+                                isAllDay: event.isAllDay
                             ),
                             sortIndex: nextSortIndex,
                             eventIdentifier: event.eventIdentifier
@@ -321,7 +325,18 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         var updates: [(RealmTimelineItem, String?)] = []
 
         for item in items {
-            guard let dropDate = item.dropDate, let startMinutes = item.startMinutes else {
+            guard let dropDate = item.dropDate else {
+                if let eventIdentifier = item.eventIdentifier,
+                   let event = eventStore.event(withIdentifier: eventIdentifier) {
+                    try? eventStore.remove(event, span: .thisEvent)
+                }
+                updates.append((item, nil))
+                continue
+            }
+
+            guard !item.isAllDay else { continue }
+
+            guard let startMinutes = item.startMinutes else {
                 if let eventIdentifier = item.eventIdentifier,
                    let event = eventStore.event(withIdentifier: eventIdentifier) {
                     try? eventStore.remove(event, span: .thisEvent)
@@ -343,6 +358,7 @@ final class TimelineRepository: TimelineRepositoryProtocol {
             }
 
             event.title = item.title
+            event.isAllDay = false
             event.startDate = startDate
             event.endDate = endDate
 
@@ -373,11 +389,12 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     }
 
     private func apply(event: EKEvent, to item: RealmTimelineItem) {
-        let startMinutes = minutesSinceMidnight(date: event.startDate)
+        let startMinutes = event.isAllDay ? nil : minutesSinceMidnight(date: event.startDate)
         item.title = event.title
         item.startMinutes = startMinutes
         item.dropDate = Calendar.current.startOfDay(for: event.startDate)
         item.durationMinutes = max(1, Int(event.endDate.timeIntervalSince(event.startDate) / 60))
+        item.isAllDay = event.isAllDay
         item.eventIdentifier = event.eventIdentifier
     }
 
@@ -450,6 +467,7 @@ final class RealmTimelineItem: Object {
     @Persisted var eventIdentifier: String?
     @Persisted var isCompleted: Bool = false
     @Persisted var priority: Int = 1
+    @Persisted var isAllDay: Bool = false
 
     convenience init(item: TimelineItem, sortIndex: Int, eventIdentifier: String? = nil) {
         self.init()
@@ -462,6 +480,7 @@ final class RealmTimelineItem: Object {
         self.eventIdentifier = eventIdentifier
         self.isCompleted = item.isCompleted
         self.priority = item.priority.rawValue
+        self.isAllDay = item.isAllDay
     }
 
     func toTimelineItem() -> TimelineItem {
@@ -472,7 +491,8 @@ final class RealmTimelineItem: Object {
             startMinutes: startMinutes,
             dropDate: dropDate,
             isCompleted: isCompleted,
-            priority: TaskPriority(rawValue: priority) ?? .medium
+            priority: TaskPriority(rawValue: priority) ?? .medium,
+            isAllDay: isAllDay
         )
     }
 }

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		4B98BC3C2F5DCD76003D42C5 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4B98BC3B2F5DCD76003D42C5 /* StoreKit.framework */; };
+		4BA925392F7922BA00594A8A /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 4BA925382F7922BA00594A8A /* icon.icon */; };
 		4BAB881B2F37934D00B75F3D /* RealmSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4BAB881A2F37934D00B75F3D /* RealmSwift */; };
 		4BAB881C2F3794F400B75F3D /* RealmSwift in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 4BAB881A2F37934D00B75F3D /* RealmSwift */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		4BAB88252F386A6800B75F3D /* RealmSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4BAB88242F386A6800B75F3D /* RealmSwift */; };
@@ -67,6 +68,7 @@
 
 /* Begin PBXFileReference section */
 		4B98BC3B2F5DCD76003D42C5 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/StoreKit.framework; sourceTree = DEVELOPER_DIR; };
+		4BA925382F7922BA00594A8A /* icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = icon.icon; sourceTree = "<group>"; };
 		4BAB84332F2F4B3600B75F3D /* MAMONAKULiveActivityExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MAMONAKULiveActivityExtension.entitlements; sourceTree = "<group>"; };
 		4BD9F7CD2F1D16EC0094BC8C /* MAMONAKU.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MAMONAKU.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4BD9F7DA2F1D16EE0094BC8C /* MAMONAKUTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MAMONAKUTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -185,6 +187,7 @@
 				4BD9F84B2F1D2A640094BC8C /* MAMONAKULiveActivity */,
 				4BD9F8462F1D2A640094BC8C /* Frameworks */,
 				4BD9F7CE2F1D16EC0094BC8C /* Products */,
+				4BA925382F7922BA00594A8A /* icon.icon */,
 			);
 			sourceTree = "<group>";
 		};
@@ -363,6 +366,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4BA925392F7922BA00594A8A /* icon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -558,7 +562,7 @@
 		4BD9F7EF2F1D16EE0094BC8C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = icon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = MAMONAKU/MAMONAKU.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -611,7 +615,7 @@
 		4BD9F7F02F1D16EE0094BC8C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = icon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = MAMONAKU/MAMONAKU.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";

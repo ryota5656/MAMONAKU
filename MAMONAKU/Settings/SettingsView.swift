@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openURL) private var openURL
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var themeManager: ThemeManager
     @StateObject private var viewModel = SettingsViewModel()
@@ -86,10 +87,28 @@ struct SettingsView: View {
                             Label("テーマ", systemImage: "paintpalette.fill")
                                 .foregroundStyle(primary)
                             Spacer()
-                            Picker("", selection: $themeManager.theme) {
-                                ForEach(AppPalette.visibleInSettings) { theme in
-                                    Text(theme.displayName)
-                                        .tag(theme)
+                            Picker(
+                                "",
+                                selection: Binding(
+                                    get: { themeManager.theme },
+                                    set: { newTheme in
+                                        if viewModel.canSelectTheme(newTheme) {
+                                            themeManager.theme = newTheme
+                                        } else {
+                                            viewModel.openSubscriptionSheet()
+                                        }
+                                    }
+                                )
+                            ) {
+                                ForEach(viewModel.availableThemes) { theme in
+                                    if viewModel.canSelectTheme(theme) {
+                                        Text(theme.displayName)
+                                            .tag(theme)
+                                    } else {
+                                        Label(theme.displayName, systemImage: "crown.fill")
+                                            .tag(theme)
+                                            .disabled(true)
+                                    }
                                 }
                             }
                             .pickerStyle(.menu)
@@ -114,7 +133,26 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
 
+                    Toggle(isOn: viewModel.notificationPermissionBinding) {
+                        Label("通知を許可", systemImage: "bell.badge.fill")
+                            .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
+                    }
+
+                    Toggle(isOn: viewModel.startNotificationEnabledBinding) {
+                        Label("開始通知", systemImage: "bell.fill")
+                            .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
+                    }
+
                     if viewModel.isBufferSettingEnabled {
+//                        Toggle(isOn: viewModel.liveActivityEnabledBinding) {
+//                            Label("Dynamic Island表示", systemImage: "rectangle.topthird.inset.filled")
+//                                .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
+//                        }
+                        Toggle(isOn: viewModel.multipleLiveActivityEnabledBinding) {
+                            Label("複数Live Activity表示", systemImage: "rectangle.3.group.fill")
+                                .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
+                        }
+
                         Toggle(isOn: viewModel.bufferNotificationEnabledBinding) {
                             Label("バッファ通知", systemImage: "timer")
                                 .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
@@ -138,6 +176,40 @@ struct SettingsView: View {
                             }
                         }
                     } else {
+//                        Button {
+//                            viewModel.openSubscriptionSheet()
+//                        } label: {
+//                            HStack(spacing: 12) {
+//                                Label("Dynamic Island表示", systemImage: "rectangle.topthird.inset.filled")
+//                                    .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
+//                                Spacer()
+//                                Text("サブスク限定")
+//                                    .font(.caption)
+//                                    .foregroundStyle(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
+//                                Image(systemName: "lock.fill")
+//                                    .font(.caption)
+//                                    .foregroundStyle(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
+//                            }
+//                        }
+//                        .buttonStyle(.plain)
+
+                        Button {
+                            viewModel.openSubscriptionSheet()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Label("複数Live Activity表示", systemImage: "rectangle.3.group.fill")
+                                    .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
+                                Spacer()
+                                Text("サブスク限定")
+                                    .font(.caption)
+                                    .foregroundStyle(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
+                                Image(systemName: "lock.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
+                            }
+                        }
+                        .buttonStyle(.plain)
+
                         Button {
                             viewModel.openSubscriptionSheet()
                         } label: {
@@ -156,10 +228,18 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
 
-                    SettingsRow(icon: "bell.fill", title: "通知設定", subtitle: "未設定") { }
-                    SettingsRow(icon: "questionmark.circle.fill", title: "ヘルプ", subtitle: "ヘルプセンター") { }
-                    SettingsRow(icon: "doc.text.fill", title: "利用規約", subtitle: "外部ページ") { }
-                    SettingsRow(icon: "hand.raised.fill", title: "プライバシーポリシー", subtitle: "外部ページ") { }
+                    SettingsRow(icon: "envelope.fill", title: "要望", subtitle: "メールで送信") {
+                        guard let url = URL(string: "mailto:kopernix5656@icloud.com") else { return }
+                        openURL(url)
+                    }
+                    SettingsRow(icon: "doc.text.fill", title: "利用規約", subtitle: "外部ページ") {
+                        guard let url = URL(string: "https://note.com/quirky_magpie934/n/n7746f82a9f27") else { return }
+                        openURL(url)
+                    }
+                    SettingsRow(icon: "hand.raised.fill", title: "プライバシーポリシー", subtitle: "外部ページ") {
+                        guard let url = URL(string: "https://note.com/quirky_magpie934/n/naec276dc2d9b") else { return }
+                        openURL(url)
+                    }
                 } header: {
                     Text("アプリ")
                         .foregroundStyle(secondary)
@@ -184,12 +264,13 @@ struct SettingsView: View {
             }
             .onAppear {
                 viewModel.subscriptionManager = subscriptionManager
-                if !viewModel.effectiveIsSubscribed, themeManager.theme != .system {
+                viewModel.refreshNotificationPermissionStatus()
+                if !viewModel.effectiveIsSubscribed, !themeManager.theme.isFreeTheme {
                     themeManager.theme = .system
                 }
             }
             .onChange(of: viewModel.effectiveIsSubscribed) { _, isSubscribed in
-                if !isSubscribed, themeManager.theme != .system {
+                if !isSubscribed, !themeManager.theme.isFreeTheme {
                     themeManager.theme = .system
                 }
             }
