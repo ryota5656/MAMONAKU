@@ -76,8 +76,8 @@ enum AppPalette: String, CaseIterable, Identifiable {
 
     static func loadFromAppGroup() -> AppPalette {
         let defaults = UserDefaults(suiteName: AppGroup.id) ?? .standard
-        let raw = defaults.string(forKey: AppGroup.themeKey) ?? AppPalette.system.rawValue
-        return AppPalette(rawValue: raw) ?? .system
+        let raw = defaults.string(forKey: AppGroup.themeKey) ?? AppPalette.light.rawValue
+        return AppPalette(rawValue: raw) ?? .light
     }
 }
 

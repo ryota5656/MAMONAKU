@@ -16,6 +16,7 @@ protocol TimelineRepositoryProtocol: AnyObject {
     func deleteItem(id: UUID)
     func fetchNextItemSummary(referenceDate: Date) -> TimelineNextItemSummary?
     func deleteItemAndEvent(id: UUID)
+    func setCalendarSyncEnabled(_ enabled: Bool)
 }
 
 final class TimelineRepository: TimelineRepositoryProtocol {
@@ -30,6 +31,9 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     private let calendarSyncQueue = DispatchQueue(label: "MAMONAKU.CalendarSync")
     private var calendarObserver: NSObjectProtocol?
     private var calendarSyncTimer: DispatchSourceTimer?
+    private var calendarSyncStateTimer: DispatchSourceTimer?
+    private var userDefaultsObserver: NSObjectProtocol?
+    private var isCalendarSyncActive = false
 
     init(userDefaults: UserDefaults? = nil) {
         if let userDefaults {
@@ -65,16 +69,21 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         self.realmConfig = config
 
         migrateUserDefaultsIfNeeded()
-        startCalendarChangeObservation()
-        startCalendarSyncTimer()
+        startCalendarSyncStateObservation()
+        refreshCalendarSyncState(runInitialSync: true)
     }
 
     deinit {
         if let calendarObserver {
             NotificationCenter.default.removeObserver(calendarObserver)
         }
+        if let userDefaultsObserver {
+            NotificationCenter.default.removeObserver(userDefaultsObserver)
+        }
         calendarSyncTimer?.cancel()
         calendarSyncTimer = nil
+        calendarSyncStateTimer?.cancel()
+        calendarSyncStateTimer = nil
     }
 
     func fetchItems() -> [TimelineItem] {
@@ -162,6 +171,13 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         persistNextItemSummary(fetchNextItemSummary(referenceDate: Date()))
     }
 
+    func setCalendarSyncEnabled(_ enabled: Bool) {
+        userDefaults.set(enabled, forKey: calendarSyncEnabledKey)
+        calendarSyncQueue.async { [weak self] in
+            self?.refreshCalendarSyncState(runInitialSync: enabled)
+        }
+    }
+
     func fetchNextItemSummary(referenceDate: Date = Date()) -> TimelineNextItemSummary? {
         let realm = realmInstance()
         let items = realm.objects(RealmTimelineItem.self)
@@ -215,76 +231,141 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         }
     }
 
+    private func startCalendarSyncStateObservation() {
+        userDefaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: userDefaults,
+            queue: nil
+        ) { [weak self] _ in
+            self?.calendarSyncQueue.async {
+                self?.refreshCalendarSyncState()
+            }
+        }
+
+        let timer = DispatchSource.makeTimerSource(queue: calendarSyncQueue)
+        timer.schedule(deadline: .now() + 2, repeating: 2)
+        timer.setEventHandler { [weak self] in
+            self?.refreshCalendarSyncState()
+        }
+        timer.resume()
+        calendarSyncStateTimer = timer
+    }
+
+    private func refreshCalendarSyncState(runInitialSync: Bool = false) {
+        guard isCalendarSyncEnabled else {
+            stopCalendarSyncIfNeeded()
+            return
+        }
+
+        if !isCalendarSyncActive {
+            isCalendarSyncActive = true
+            startCalendarChangeObservation()
+            startCalendarSyncTimer()
+        }
+
+        if runInitialSync {
+            requestCalendarAccessIfNeeded()
+        }
+    }
+
+    private func stopCalendarSyncIfNeeded() {
+        guard isCalendarSyncActive else { return }
+        if let calendarObserver {
+            NotificationCenter.default.removeObserver(calendarObserver)
+            self.calendarObserver = nil
+        }
+        calendarSyncTimer?.cancel()
+        calendarSyncTimer = nil
+        isCalendarSyncActive = false
+    }
+
     private func requestCalendarAccessIfNeeded() {
         guard isCalendarSyncEnabled else { return }
         let status = EKEventStore.authorizationStatus(for: .event)
-        if status == .authorized || status == .fullAccess {
+        if hasFullCalendarAccess(status) {
             calendarSyncQueue.async { [weak self] in
-                self?.syncRealmFromCalendar()
-                self?.syncCalendarFromRealm()
+                self?.performFullCalendarSync()
             }
             return
         }
         guard status == .notDetermined else { return }
-        eventStore.requestAccess(to: .event) { [weak self] granted, _ in
-            guard granted else { return }
-            self?.calendarSyncQueue.async {
-                self?.syncRealmFromCalendar()
-                self?.syncCalendarFromRealm()
+
+        if #available(iOS 17.0, *) {
+            eventStore.requestFullAccessToEvents { [weak self] granted, _ in
+                guard granted else { return }
+                self?.calendarSyncQueue.async {
+                    self?.performFullCalendarSync()
+                }
+            }
+        } else {
+            eventStore.requestAccess(to: .event) { [weak self] granted, _ in
+                guard granted else { return }
+                self?.calendarSyncQueue.async {
+                    self?.performFullCalendarSync()
+                }
             }
         }
     }
 
     private func startCalendarChangeObservation() {
-        guard isCalendarSyncEnabled else { return }
+        guard isCalendarSyncEnabled, calendarObserver == nil else { return }
         calendarObserver = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged,
             object: eventStore,
             queue: nil
         ) { [weak self] _ in
             self?.calendarSyncQueue.async {
-                self?.syncRealmFromCalendar()
+                self?.performFullCalendarSync()
             }
         }
     }
 
     private func startCalendarSyncTimer() {
-        guard isCalendarSyncEnabled else { return }
+        guard isCalendarSyncEnabled, calendarSyncTimer == nil else { return }
         let timer = DispatchSource.makeTimerSource(queue: calendarSyncQueue)
         timer.schedule(deadline: .now() + 10, repeating: 10)
         timer.setEventHandler { [weak self] in
-            self?.syncRealmFromCalendar()
+            self?.performFullCalendarSync()
         }
         timer.resume()
         calendarSyncTimer = timer
     }
 
+    private func performFullCalendarSync() {
+        guard isCalendarSyncEnabled else { return }
+        syncRealmFromCalendar()
+        syncCalendarFromRealm()
+    }
+
     private func syncRealmFromCalendar() {
         guard isCalendarSyncEnabled else { return }
         let status = EKEventStore.authorizationStatus(for: .event)
-        guard status == .authorized || status == .fullAccess else { return }
+        guard hasFullCalendarAccess(status) else { return }
         guard let calendar = eventStore.defaultCalendarForNewEvents else { return }
 
-        let now = Date()
-        let cal = Calendar.current
-        let startOfWeek = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? cal.startOfDay(for: now)
-        let endOfWeek = cal.date(byAdding: .day, value: 7, to: startOfWeek) ?? now
-        let predicate = eventStore.predicateForEvents(withStart: startOfWeek, end: endOfWeek, calendars: [calendar])
+        let window = calendarSyncWindow()
+        let predicate = eventStore.predicateForEvents(withStart: window.start, end: window.end, calendars: [calendar])
         let events = eventStore.events(matching: predicate)
 
         let realm = realmInstance()
         let existing = realm.objects(RealmTimelineItem.self)
-        let existingMap = Dictionary<String, RealmTimelineItem>(uniqueKeysWithValues: existing.compactMap { item in
-            guard let eventIdentifier = item.eventIdentifier else { return nil }
-            return (eventIdentifier, item)
-        })
+        var existingMap: [String: RealmTimelineItem] = [:]
+        for item in existing {
+            guard let eventIdentifier = item.eventIdentifier else { continue }
+            existingMap[eventIdentifier] = item
+        }
         let eventIDs = Set(events.map { $0.eventIdentifier })
         let maxSortIndex = existing.map { $0.sortIndex }.max() ?? -1
         var nextSortIndex = maxSortIndex + 1
 
         do {
+            let itemsToDelete = existing.filter { item in
+                guard let eventIdentifier = item.eventIdentifier else { return false }
+                return !eventIDs.contains(eventIdentifier) && self.shouldDeleteMissingCalendarEvent(item, in: window)
+            }
+
             try realm.write {
-                for item in existing where item.eventIdentifier != nil && !eventIDs.contains(item.eventIdentifier ?? "") {
+                for item in itemsToDelete {
                     realm.delete(item)
                 }
 
@@ -311,13 +392,15 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         } catch {
             return
         }
+        let items = fetchItems()
+        persistItemsToUserDefaults(items)
         persistNextItemSummary(fetchNextItemSummary(referenceDate: Date()))
     }
 
     private func syncCalendarFromRealm() {
         guard isCalendarSyncEnabled else { return }
         let status = EKEventStore.authorizationStatus(for: .event)
-        guard status == .authorized || status == .fullAccess else { return }
+        guard hasFullCalendarAccess(status) else { return }
         guard let calendar = eventStore.defaultCalendarForNewEvents else { return }
 
         let realm = realmInstance()
@@ -334,9 +417,15 @@ final class TimelineRepository: TimelineRepositoryProtocol {
                 continue
             }
 
-            guard !item.isAllDay else { continue }
-
-            guard let startMinutes = item.startMinutes else {
+            let startDate: Date
+            let endDate: Date
+            if item.isAllDay {
+                startDate = dropDate
+                endDate = Calendar.current.date(byAdding: .day, value: 1, to: dropDate) ?? dropDate.addingTimeInterval(24 * 60 * 60)
+            } else if let startMinutes = item.startMinutes {
+                startDate = Calendar.current.date(byAdding: .minute, value: startMinutes, to: dropDate) ?? dropDate
+                endDate = startDate.addingTimeInterval(TimeInterval(item.durationMinutes * 60))
+            } else {
                 if let eventIdentifier = item.eventIdentifier,
                    let event = eventStore.event(withIdentifier: eventIdentifier) {
                     try? eventStore.remove(event, span: .thisEvent)
@@ -345,24 +434,26 @@ final class TimelineRepository: TimelineRepositoryProtocol {
                 continue
             }
 
-            let startDate = Calendar.current.date(byAdding: .minute, value: startMinutes, to: dropDate) ?? dropDate
-            let endDate = startDate.addingTimeInterval(TimeInterval(item.durationMinutes * 60))
-
             let event: EKEvent
+            let shouldSaveEvent: Bool
             if let eventIdentifier = item.eventIdentifier,
                let existing = eventStore.event(withIdentifier: eventIdentifier) {
                 event = existing
+                shouldSaveEvent = eventNeedsSave(event, title: item.title, isAllDay: item.isAllDay, startDate: startDate, endDate: endDate)
             } else {
                 event = EKEvent(eventStore: eventStore)
                 event.calendar = calendar
+                shouldSaveEvent = true
             }
 
             event.title = item.title
-            event.isAllDay = false
+            event.isAllDay = item.isAllDay
             event.startDate = startDate
             event.endDate = endDate
 
-            try? eventStore.save(event, span: .thisEvent)
+            if shouldSaveEvent {
+                try? eventStore.save(event, span: .thisEvent)
+            }
             updates.append((item, event.eventIdentifier))
         }
 
@@ -380,7 +471,7 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     private func deleteEvents(identifiers: [String]) {
         guard isCalendarSyncEnabled else { return }
         let status = EKEventStore.authorizationStatus(for: .event)
-        guard status == .authorized || status == .fullAccess else { return }
+        guard hasFullCalendarAccess(status) else { return }
         for identifier in identifiers {
             if let event = eventStore.event(withIdentifier: identifier) {
                 try? eventStore.remove(event, span: .thisEvent)
@@ -398,6 +489,42 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         item.eventIdentifier = event.eventIdentifier
     }
 
+    private func hasFullCalendarAccess(_ status: EKAuthorizationStatus) -> Bool {
+        if status == .authorized {
+            return true
+        }
+        if #available(iOS 17.0, *) {
+            return status == .fullAccess
+        }
+        return false
+    }
+
+    private func calendarSyncWindow(referenceDate: Date = Date()) -> (start: Date, end: Date) {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: referenceDate)
+        let start = calendar.date(byAdding: .year, value: -1, to: startOfToday) ?? startOfToday
+        let end = calendar.date(byAdding: .year, value: 1, to: startOfToday) ?? startOfToday
+        return (start, end)
+    }
+
+    private func shouldDeleteMissingCalendarEvent(_ item: RealmTimelineItem, in window: (start: Date, end: Date)) -> Bool {
+        guard let dropDate = item.dropDate else { return true }
+        return dropDate >= window.start && dropDate < window.end
+    }
+
+    private func eventNeedsSave(
+        _ event: EKEvent,
+        title: String,
+        isAllDay: Bool,
+        startDate: Date,
+        endDate: Date
+    ) -> Bool {
+        event.title != title
+            || event.isAllDay != isAllDay
+            || abs(event.startDate.timeIntervalSince(startDate)) >= 1
+            || abs(event.endDate.timeIntervalSince(endDate)) >= 1
+    }
+
     private func minutesSinceMidnight(date: Date) -> Int {
         let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
         let h = comps.hour ?? 0
@@ -408,7 +535,7 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     /// 標準カレンダー同期はサブスクリプション加入時のみ有効
     private var isCalendarSyncEnabled: Bool {
         let syncPreferred = userDefaults.object(forKey: calendarSyncEnabledKey) == nil
-            ? true
+            ? false
             : userDefaults.bool(forKey: calendarSyncEnabledKey)
         let subscribed = (userDefaults.object(forKey: subscriptionStateKey) as? Bool) ?? false
         return syncPreferred && subscribed

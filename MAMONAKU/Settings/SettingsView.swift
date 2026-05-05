@@ -249,14 +249,6 @@ struct SettingsView: View {
             .onAppear {
                 viewModel.subscriptionManager = subscriptionManager
                 viewModel.refreshNotificationPermissionStatus()
-                if !viewModel.effectiveIsSubscribed, !themeManager.theme.isFreeTheme {
-                    themeManager.theme = .system
-                }
-            }
-            .onChange(of: viewModel.effectiveIsSubscribed) { _, isSubscribed in
-                if !isSubscribed, !themeManager.theme.isFreeTheme {
-                    themeManager.theme = .system
-                }
             }
         }
         .background(background)

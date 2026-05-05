@@ -13,16 +13,6 @@ struct ContentView: View {
                 .background(AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme))
         }
         .preferredColorScheme(themeManager.theme.preferredColorScheme)
-        .onAppear {
-            if !subscriptionManager.effectiveIsSubscribed, !themeManager.theme.isFreeTheme {
-                themeManager.theme = .system
-            }
-        }
-        .onChange(of: subscriptionManager.effectiveIsSubscribed) { _, isSubscribed in
-            if !isSubscribed, !themeManager.theme.isFreeTheme {
-                themeManager.theme = .system
-            }
-        }
         .fullScreenCover(isPresented: onboardingBinding) {
             OnboardingView {
                 hasSeenOnboarding = true

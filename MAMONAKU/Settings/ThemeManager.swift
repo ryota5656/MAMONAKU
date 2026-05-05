@@ -43,7 +43,7 @@ final class ThemeManager: ObservableObject {
             switch legacyAppearanceValue {
             case "light": return .light
             case "dark": return .dark
-            default: return .system
+            default: return .light
             }
         }()
 

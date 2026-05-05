@@ -23,6 +23,9 @@ final class SubscriptionManager: ObservableObject {
     /// App Group の UserDefaults に書き出すキー（TimelineRepository のカレンダー同期判定で参照）
     static let subscriptionStateUserDefaultsKey = "subscription_is_subscribed"
     private static let appGroupID = "group.sairyo.MAMONAKU"
+    #if DEBUG
+    private static let debugOverrideSubscribedKey = "debug_subscription_override"
+    #endif
 
     /// 加入中は true。未加入は優先度を Low のみで登録可能。StoreKit の currentEntitlements で更新。
     @Published private(set) var isSubscribed: Bool = false {
@@ -40,8 +43,10 @@ final class SubscriptionManager: ObservableObject {
 
     #if DEBUG
     /// 開発用: true の間は加入扱い（StoreKit 未購入でも優先度選択可能）。トグルで変更すると objectWillChange と UserDefaults 同期で他 UI に反映される。
-    var debugOverrideSubscribed: Bool = true {
+    var debugOverrideSubscribed: Bool = false {
         didSet {
+            UserDefaults(suiteName: Self.appGroupID)?
+                .set(debugOverrideSubscribed, forKey: Self.debugOverrideSubscribedKey)
             objectWillChange.send()
             persistSubscriptionState()
         }
@@ -62,6 +67,10 @@ final class SubscriptionManager: ObservableObject {
     private var listenerTask: Task<Void, Never>?
 
     init() {
+        #if DEBUG
+        debugOverrideSubscribed = UserDefaults(suiteName: Self.appGroupID)?
+            .bool(forKey: Self.debugOverrideSubscribedKey) ?? false
+        #endif
         persistSubscriptionState()
         updateTask = Task { @MainActor in
             await loadProducts()
