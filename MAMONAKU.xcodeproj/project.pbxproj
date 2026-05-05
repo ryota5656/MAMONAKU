@@ -6,6 +6,17 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		4B68989E2F89E8A900B6EB12 /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 4B68989D2F89E8A900B6EB12 /* icon.icon */; };
+		4B98BC3C2F5DCD76003D42C5 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4B98BC3B2F5DCD76003D42C5 /* StoreKit.framework */; };
+		4BAB881B2F37934D00B75F3D /* RealmSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4BAB881A2F37934D00B75F3D /* RealmSwift */; };
+		4BAB881C2F3794F400B75F3D /* RealmSwift in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 4BAB881A2F37934D00B75F3D /* RealmSwift */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		4BAB88252F386A6800B75F3D /* RealmSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4BAB88242F386A6800B75F3D /* RealmSwift */; };
+		4BD9F8482F1D2A640094BC8C /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4BD9F8472F1D2A640094BC8C /* WidgetKit.framework */; };
+		4BD9F84A2F1D2A640094BC8C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4BD9F8492F1D2A640094BC8C /* SwiftUI.framework */; };
+		4BD9F8592F1D2A650094BC8C /* MAMONAKULiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4BD9F8452F1D2A640094BC8C /* MAMONAKULiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		4BD9F7DB2F1D16EE0094BC8C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,17 +32,90 @@
 			remoteGlobalIDString = 4BD9F7CC2F1D16EC0094BC8C;
 			remoteInfo = MAMONAKU;
 		};
+		4BD9F8572F1D2A650094BC8C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4BD9F7C52F1D16EC0094BC8C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4BD9F8442F1D2A640094BC8C;
+			remoteInfo = MAMONAKULiveActivityExtension;
+		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		4BAB881D2F3794F400B75F3D /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				4BAB881C2F3794F400B75F3D /* RealmSwift in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4BD9F85E2F1D2A650094BC8C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				4BD9F8592F1D2A650094BC8C /* MAMONAKULiveActivityExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		4B68989D2F89E8A900B6EB12 /* icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = icon.icon; sourceTree = "<group>"; };
+		4B98BC3B2F5DCD76003D42C5 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/StoreKit.framework; sourceTree = DEVELOPER_DIR; };
+		4BAB84332F2F4B3600B75F3D /* MAMONAKULiveActivityExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MAMONAKULiveActivityExtension.entitlements; sourceTree = "<group>"; };
 		4BD9F7CD2F1D16EC0094BC8C /* MAMONAKU.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MAMONAKU.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4BD9F7DA2F1D16EE0094BC8C /* MAMONAKUTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MAMONAKUTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4BD9F7E42F1D16EE0094BC8C /* MAMONAKUUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MAMONAKUUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4BD9F8452F1D2A640094BC8C /* MAMONAKULiveActivityExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MAMONAKULiveActivityExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4BD9F8472F1D2A640094BC8C /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		4BD9F8492F1D2A640094BC8C /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4BAB881F2F383FB200B75F3D /* Exceptions for "MAMONAKU" folder in "MAMONAKU" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4BD9F7CC2F1D16EC0094BC8C /* MAMONAKU */;
+		};
+		4BAB88232F38534000B75F3D /* Exceptions for "MAMONAKU" folder in "MAMONAKULiveActivityExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Util/Color+Hex.swift",
+			);
+			target = 4BD9F8442F1D2A640094BC8C /* MAMONAKULiveActivityExtension */;
+		};
+		4BD9F85A2F1D2A650094BC8C /* Exceptions for "MAMONAKULiveActivity" folder in "MAMONAKULiveActivityExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4BD9F8442F1D2A640094BC8C /* MAMONAKULiveActivityExtension */;
+		};
+		4BD9F8642F1D2C290094BC8C /* Exceptions for "MAMONAKULiveActivity" folder in "MAMONAKU" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				MAMONAKULiveActivityLiveActivity.swift,
+			);
+			target = 4BD9F7CC2F1D16EC0094BC8C /* MAMONAKU */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4BD9F7CF2F1D16EC0094BC8C /* MAMONAKU */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4BAB881F2F383FB200B75F3D /* Exceptions for "MAMONAKU" folder in "MAMONAKU" target */,
+				4BAB88232F38534000B75F3D /* Exceptions for "MAMONAKU" folder in "MAMONAKULiveActivityExtension" target */,
+			);
 			path = MAMONAKU;
 			sourceTree = "<group>";
 		};
@@ -45,6 +129,15 @@
 			path = MAMONAKUUITests;
 			sourceTree = "<group>";
 		};
+		4BD9F84B2F1D2A640094BC8C /* MAMONAKULiveActivity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4BD9F8642F1D2C290094BC8C /* Exceptions for "MAMONAKULiveActivity" folder in "MAMONAKU" target */,
+				4BD9F85A2F1D2A650094BC8C /* Exceptions for "MAMONAKULiveActivity" folder in "MAMONAKULiveActivityExtension" target */,
+			);
+			path = MAMONAKULiveActivity;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +145,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4BAB881B2F37934D00B75F3D /* RealmSwift in Frameworks */,
+				4B98BC3C2F5DCD76003D42C5 /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -69,16 +164,30 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4BD9F8422F1D2A640094BC8C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4BAB88252F386A6800B75F3D /* RealmSwift in Frameworks */,
+				4BD9F84A2F1D2A640094BC8C /* SwiftUI.framework in Frameworks */,
+				4BD9F8482F1D2A640094BC8C /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		4BD9F7C42F1D16EC0094BC8C = {
 			isa = PBXGroup;
 			children = (
+				4BAB84332F2F4B3600B75F3D /* MAMONAKULiveActivityExtension.entitlements */,
 				4BD9F7CF2F1D16EC0094BC8C /* MAMONAKU */,
 				4BD9F7DD2F1D16EE0094BC8C /* MAMONAKUTests */,
 				4BD9F7E72F1D16EE0094BC8C /* MAMONAKUUITests */,
+				4BD9F84B2F1D2A640094BC8C /* MAMONAKULiveActivity */,
+				4BD9F8462F1D2A640094BC8C /* Frameworks */,
 				4BD9F7CE2F1D16EC0094BC8C /* Products */,
+				4B68989D2F89E8A900B6EB12 /* icon.icon */,
 			);
 			sourceTree = "<group>";
 		};
@@ -88,8 +197,19 @@
 				4BD9F7CD2F1D16EC0094BC8C /* MAMONAKU.app */,
 				4BD9F7DA2F1D16EE0094BC8C /* MAMONAKUTests.xctest */,
 				4BD9F7E42F1D16EE0094BC8C /* MAMONAKUUITests.xctest */,
+				4BD9F8452F1D2A640094BC8C /* MAMONAKULiveActivityExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		4BD9F8462F1D2A640094BC8C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				4B98BC3B2F5DCD76003D42C5 /* StoreKit.framework */,
+				4BD9F8472F1D2A640094BC8C /* WidgetKit.framework */,
+				4BD9F8492F1D2A640094BC8C /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -102,16 +222,20 @@
 				4BD9F7C92F1D16EC0094BC8C /* Sources */,
 				4BD9F7CA2F1D16EC0094BC8C /* Frameworks */,
 				4BD9F7CB2F1D16EC0094BC8C /* Resources */,
+				4BD9F85E2F1D2A650094BC8C /* Embed Foundation Extensions */,
+				4BAB881D2F3794F400B75F3D /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				4BD9F8582F1D2A650094BC8C /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				4BD9F7CF2F1D16EC0094BC8C /* MAMONAKU */,
 			);
 			name = MAMONAKU;
 			packageProductDependencies = (
+				4BAB881A2F37934D00B75F3D /* RealmSwift */,
 			);
 			productName = MAMONAKU;
 			productReference = 4BD9F7CD2F1D16EC0094BC8C /* MAMONAKU.app */;
@@ -163,6 +287,29 @@
 			productReference = 4BD9F7E42F1D16EE0094BC8C /* MAMONAKUUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		4BD9F8442F1D2A640094BC8C /* MAMONAKULiveActivityExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4BD9F85B2F1D2A650094BC8C /* Build configuration list for PBXNativeTarget "MAMONAKULiveActivityExtension" */;
+			buildPhases = (
+				4BD9F8412F1D2A640094BC8C /* Sources */,
+				4BD9F8422F1D2A640094BC8C /* Frameworks */,
+				4BD9F8432F1D2A640094BC8C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4BD9F84B2F1D2A640094BC8C /* MAMONAKULiveActivity */,
+			);
+			name = MAMONAKULiveActivityExtension;
+			packageProductDependencies = (
+				4BAB88242F386A6800B75F3D /* RealmSwift */,
+			);
+			productName = MAMONAKULiveActivityExtension;
+			productReference = 4BD9F8452F1D2A640094BC8C /* MAMONAKULiveActivityExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -184,6 +331,9 @@
 						CreatedOnToolsVersion = 26.0;
 						TestTargetID = 4BD9F7CC2F1D16EC0094BC8C;
 					};
+					4BD9F8442F1D2A640094BC8C = {
+						CreatedOnToolsVersion = 26.0;
+					};
 				};
 			};
 			buildConfigurationList = 4BD9F7C82F1D16EC0094BC8C /* Build configuration list for PBXProject "MAMONAKU" */;
@@ -195,6 +345,9 @@
 			);
 			mainGroup = 4BD9F7C42F1D16EC0094BC8C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4BAB88192F37934D00B75F3D /* XCRemoteSwiftPackageReference "realm-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4BD9F7CE2F1D16EC0094BC8C /* Products */;
 			projectDirPath = "";
@@ -203,6 +356,7 @@
 				4BD9F7CC2F1D16EC0094BC8C /* MAMONAKU */,
 				4BD9F7D92F1D16EE0094BC8C /* MAMONAKUTests */,
 				4BD9F7E32F1D16EE0094BC8C /* MAMONAKUUITests */,
+				4BD9F8442F1D2A640094BC8C /* MAMONAKULiveActivityExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -212,6 +366,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4B68989E2F89E8A900B6EB12 /* icon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -223,6 +378,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		4BD9F7E22F1D16EE0094BC8C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4BD9F8432F1D2A640094BC8C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +415,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4BD9F8412F1D2A640094BC8C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +434,11 @@
 			isa = PBXTargetDependency;
 			target = 4BD9F7CC2F1D16EC0094BC8C /* MAMONAKU */;
 			targetProxy = 4BD9F7E52F1D16EE0094BC8C /* PBXContainerItemProxy */;
+		};
+		4BD9F8582F1D2A650094BC8C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4BD9F8442F1D2A640094BC8C /* MAMONAKULiveActivityExtension */;
+			targetProxy = 4BD9F8572F1D2A650094BC8C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -388,8 +562,10 @@
 		4BD9F7EF2F1D16EE0094BC8C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = icon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MAMONAKU/MAMONAKU.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8236RZ538Q;
@@ -398,33 +574,40 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MAMONAKU/Info.plist;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "カレンダーは、イベントの表示に使用されます。";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "「イベントの登録やスケジュールの確認のために、カレンダーへのアクセスを使用します。」";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = sairyo.MAMONAKU;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = 1;
 				XROS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
@@ -432,8 +615,10 @@
 		4BD9F7F02F1D16EE0094BC8C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = icon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MAMONAKU/MAMONAKU.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8236RZ538Q;
@@ -442,33 +627,40 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MAMONAKU/Info.plist;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "カレンダーは、イベントの表示に使用されます。";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "「イベントの登録やスケジュールの確認のために、カレンダーへのアクセスを使用します。」";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = sairyo.MAMONAKU;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = 1;
 				XROS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
@@ -575,6 +767,81 @@
 			};
 			name = Release;
 		};
+		4BD9F85C2F1D2A650094BC8C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = MAMONAKULiveActivityExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8236RZ538Q;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MAMONAKULiveActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MAMONAKULiveActivity;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sairyo.MAMONAKU.MAMONAKULiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		4BD9F85D2F1D2A650094BC8C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = MAMONAKULiveActivityExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8236RZ538Q;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MAMONAKULiveActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MAMONAKULiveActivity;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sairyo.MAMONAKU.MAMONAKULiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -614,7 +881,40 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		4BD9F85B2F1D2A650094BC8C /* Build configuration list for PBXNativeTarget "MAMONAKULiveActivityExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4BD9F85C2F1D2A650094BC8C /* Debug */,
+				4BD9F85D2F1D2A650094BC8C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4BAB88192F37934D00B75F3D /* XCRemoteSwiftPackageReference "realm-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/realm/realm-swift";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4BAB881A2F37934D00B75F3D /* RealmSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4BAB88192F37934D00B75F3D /* XCRemoteSwiftPackageReference "realm-swift" */;
+			productName = RealmSwift;
+		};
+		4BAB88242F386A6800B75F3D /* RealmSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4BAB88192F37934D00B75F3D /* XCRemoteSwiftPackageReference "realm-swift" */;
+			productName = RealmSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 4BD9F7C52F1D16EC0094BC8C /* Project object */;
 }
