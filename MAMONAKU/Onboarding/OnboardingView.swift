@@ -12,17 +12,17 @@ struct OnboardingView: View {
         OnboardingPage(
             title: "ようこそ MAMONAKU へ",
             message: "次の予定までの時間を、ひと目で把握できます。",
-            symbol: "clock.badge.checkmark"
+            icon: .asset("onBoarding1")
         ),
         OnboardingPage(
             title: "タスクを簡単に配置",
             message: "Stockからドラッグして、1日の流れを直感的に作れます。",
-            symbol: "hand.draw"
+            icon: .symbol("hand.draw")
         ),
         OnboardingPage(
             title: "通知で次の行動をサポート",
             message: "バッファ通知とLive Activityで、次の予定を逃しません。",
-            symbol: "bell.badge"
+            icon: .symbol("bell.badge")
         )
     ]
 
@@ -35,9 +35,19 @@ struct OnboardingView: View {
                 ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
                     VStack(spacing: 22) {
                         Spacer(minLength: 20)
-                        Image(systemName: page.symbol)
-                            .font(.system(size: 64, weight: .semibold))
-                            .foregroundStyle(strongAccent)
+                        switch page.icon {
+                        case .symbol(let symbolName):
+                            Image(systemName: symbolName)
+                                .font(.system(size: 64, weight: .semibold))
+                                .foregroundStyle(strongAccent)
+                        case .asset(let assetName):
+                            Image(assetName)
+                                .resizable()
+                                .renderingMode(.template)
+                                .scaledToFit()
+                                .frame(width: 164)
+                                .foregroundStyle(strongAccent)
+                        }
                         VStack(spacing: 10) {
                             Text(page.title)
                                 .font(.title2.weight(.bold))
@@ -101,7 +111,12 @@ struct OnboardingView: View {
 private struct OnboardingPage {
     let title: String
     let message: String
-    let symbol: String
+    let icon: OnboardingPageIcon
+}
+
+private enum OnboardingPageIcon {
+    case symbol(String)
+    case asset(String)
 }
 
 #Preview {

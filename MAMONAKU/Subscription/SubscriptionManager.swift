@@ -93,9 +93,22 @@ final class SubscriptionManager: ObservableObject {
     /// Transaction.currentEntitlements から加入状態を更新
     @MainActor
     func updateSubscriptionStatus() async {
+        let now = Date()
         var hasEntitlement = false
         for await result in Transaction.currentEntitlements {
-            guard case .verified(let transaction) = result else { continue }
+            guard case .verified(let transaction) = result,
+                  Self.subscriptionProductIDs.contains(transaction.productID),
+                  transaction.revocationDate == nil
+            else { continue }
+
+            if let expirationDate = transaction.expirationDate {
+                guard expirationDate > now else { continue }
+            }
+
+            if transaction.isUpgraded {
+                continue
+            }
+
             if Self.subscriptionProductIDs.contains(transaction.productID) {
                 hasEntitlement = true
                 break

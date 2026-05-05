@@ -105,7 +105,11 @@ struct TimelineScreen: View {
     private var whiteSheetSection: some View {
         WhiteSheetView(
             viewModel: viewModel,
-            sheetHeight: $sheetHeight
+            sheetHeight: $sheetHeight,
+            isSettingsHighlighted: tutorialStep == .explainSettingsAndSubscription,
+            onOpenSettings: {
+                isSettingsPresented = true
+            }
         )
         .offset(y: isHeaderExpanded ? (headerHeight + 12) : 0)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isHeaderExpanded)
@@ -440,8 +444,8 @@ struct TimelineScreen: View {
         case .explainLongPress:
             tutorialStep = .explainLiveActivityFromPlus
         case .explainLiveActivityFromPlus:
-            tutorialStep = .goLockScreen
-        case .goLockScreen:
+            tutorialStep = .explainSettingsAndSubscription
+        case .explainSettingsAndSubscription:
             tutorialStep = nil
             isFirstRunTutorialCompleted = true
         }
@@ -454,7 +458,7 @@ private enum TutorialStep {
     case confirmCountdown
     case explainLongPress
     case explainLiveActivityFromPlus
-    case goLockScreen
+    case explainSettingsAndSubscription
 
     var message: String {
         switch self {
@@ -468,14 +472,14 @@ private enum TutorialStep {
             return "タイムライン上を長押しすると、その位置に新しいアイテムをすぐ置けます。"
         case .explainLiveActivityFromPlus:
             return "プラスボタンを押しながら上にスライドすると、ロック画面にカウントダウンが表示されるようになります。"
-        case .goLockScreen:
-            return "最後にロック画面で時刻表示（Live Activity）を確認して、チュートリアル完了です。"
+        case .explainSettingsAndSubscription:
+            return "最後に日付の左側にある設定アイコンを確認しましょう。ここからテーマ変更やサブスク特典を確認でき、加入いただけると複数の予定を見やすく表示できます。"
         }
     }
 
     var primaryButtonTitle: String {
         switch self {
-        case .goLockScreen:
+        case .explainSettingsAndSubscription:
             return "チュートリアル完了"
         default:
             return "次へ"

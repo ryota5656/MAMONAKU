@@ -491,9 +491,8 @@ class TimelineViewModel: ObservableObject {
     }
 
     private var isLiveActivityEnabled: Bool {
-        let isSubscribed = appGroupDefaults?.bool(forKey: SubscriptionManager.subscriptionStateUserDefaultsKey) ?? false
         let isEnabledByUser = appGroupDefaults?.object(forKey: AppGroup.liveActivityEnabledKey) as? Bool ?? true
-        return isSubscribed && isEnabledByUser
+        return isEnabledByUser
     }
 
     private var isMultipleLiveActivityEnabled: Bool {

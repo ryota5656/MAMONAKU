@@ -32,7 +32,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "127"
             endingLineNumber = "127"
-            landmarkName = "deleteItem(id:)"
+            landmarkName = "updateItem(_:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -48,8 +48,8 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "124"
             endingLineNumber = "124"
-            landmarkName = "TimelineRepository"
-            landmarkType = "3">
+            landmarkName = "updateItem(_:)"
+            landmarkType = "7">
             <Locations>
                <Location
                   uuid = "B657A852-178A-4AE8-A670-7E51F8ED9FB1 - e2ce2445b46ad2bb"

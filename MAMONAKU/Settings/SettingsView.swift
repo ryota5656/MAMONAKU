@@ -143,11 +143,12 @@ struct SettingsView: View {
                             .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
                     }
 
+                    Toggle(isOn: viewModel.liveActivityEnabledBinding) {
+                        Label("Live Activity表示", systemImage: "rectangle.topthird.inset.filled")
+                            .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
+                    }
+
                     if viewModel.isBufferSettingEnabled {
-//                        Toggle(isOn: viewModel.liveActivityEnabledBinding) {
-//                            Label("Dynamic Island表示", systemImage: "rectangle.topthird.inset.filled")
-//                                .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
-//                        }
                         Toggle(isOn: viewModel.multipleLiveActivityEnabledBinding) {
                             Label("複数Live Activity表示", systemImage: "rectangle.3.group.fill")
                                 .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
@@ -176,23 +177,6 @@ struct SettingsView: View {
                             }
                         }
                     } else {
-//                        Button {
-//                            viewModel.openSubscriptionSheet()
-//                        } label: {
-//                            HStack(spacing: 12) {
-//                                Label("Dynamic Island表示", systemImage: "rectangle.topthird.inset.filled")
-//                                    .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
-//                                Spacer()
-//                                Text("サブスク限定")
-//                                    .font(.caption)
-//                                    .foregroundStyle(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
-//                                Image(systemName: "lock.fill")
-//                                    .font(.caption)
-//                                    .foregroundStyle(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
-//                            }
-//                        }
-//                        .buttonStyle(.plain)
-
                         Button {
                             viewModel.openSubscriptionSheet()
                         } label: {

@@ -7,6 +7,8 @@ struct WhiteSheetView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @ObservedObject var viewModel: TimelineViewModel
     @Binding var sheetHeight: CGFloat
+    var isSettingsHighlighted: Bool = false
+    var onOpenSettings: () -> Void = {}
     @State private var lastMagnification: CGFloat = 1.0
     @State private var tabSelection: Date = Calendar.current.startOfDay(for: Date())
     /// スワイプで配列がずれないよう、TabView の日付範囲の中心を固定する（カレンダーで遠い日を選んだときだけ更新）
@@ -31,7 +33,9 @@ struct WhiteSheetView: View {
             VStack(spacing: 10) {
                 CalendarHeaderView(
                     selectedDate: $viewModel.selectedDate,
-                    isTwoDayView: $viewModel.isTwoDayView
+                    isTwoDayView: $viewModel.isTwoDayView,
+                    isSettingsHighlighted: isSettingsHighlighted,
+                    onOpenSettings: onOpenSettings
                 )
                 
                 TabView(selection: $tabSelection) {

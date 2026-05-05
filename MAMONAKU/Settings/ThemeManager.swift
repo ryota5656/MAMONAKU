@@ -13,12 +13,12 @@ final class ThemeManager: ObservableObject {
 
     private static var appGroupDefaults: UserDefaults? { UserDefaults(suiteName: AppGroup.id) }
 
-    @AppStorage(Keys.theme, store: ThemeManager.appGroupDefaults) private var storedTheme: String = AppPalette.system.rawValue
+    @AppStorage(Keys.theme, store: ThemeManager.appGroupDefaults) private var storedTheme: String = AppPalette.light.rawValue
     @AppStorage(Keys.appearance, store: ThemeManager.appGroupDefaults) private var legacyAppearance: String = "system"
     @AppStorage(Keys.palette, store: ThemeManager.appGroupDefaults) private var legacyPalette: String = "minimal"
 
     /// 現在選択されている着せ替えテーマ
-    @Published var theme: AppPalette = .system {
+    @Published var theme: AppPalette = .light {
         didSet {
             storedTheme = theme.rawValue
         }

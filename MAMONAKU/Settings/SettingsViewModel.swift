@@ -213,9 +213,9 @@ final class SettingsViewModel: ObservableObject {
         effectiveIsSubscribed || theme.isFreeTheme
     }
 
-    /// Dynamic Island / Live Activity 設定を有効にするか（加入時のみ true）
+    /// Dynamic Island / Live Activity 設定を有効にするか
     var isLiveActivitySettingEnabled: Bool {
-        effectiveIsSubscribed
+        true
     }
 
     /// カレンダー同期の Binding（未加入時はオフ表示・変更不可）
@@ -305,15 +305,13 @@ final class SettingsViewModel: ObservableObject {
         )
     }
 
-    /// Dynamic Island / Live Activity の Binding（未加入時は変更不可）
+    /// Dynamic Island / Live Activity の Binding
     var liveActivityEnabledBinding: Binding<Bool> {
         Binding(
             get: { [self] in
-                if effectiveIsSubscribed { return self.liveActivityEnabled }
-                return false
+                self.liveActivityEnabled
             },
             set: { [self] newValue in
-                guard effectiveIsSubscribed else { return }
                 self.liveActivityEnabled = newValue
             }
         )

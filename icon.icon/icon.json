@@ -1,49 +1,39 @@
 {
-  "fill-specializations" : [
-    {
-      "value" : {
-        "linear-gradient" : [
-          "gray:0.89951,1.00000",
-          "extended-gray:1.00000,1.00000"
-        ]
-      }
-    },
-    {
-      "appearance" : "tinted",
-      "value" : {
-        "linear-gradient" : [
-          "gray:1.00000,1.00000",
-          "extended-gray:1.00000,1.00000"
-        ]
-      }
-    }
-  ],
+  "fill" : {
+    "solid" : "gray:1.00000,1.00000"
+  },
   "groups" : [
     {
       "layers" : [
         {
           "fill-specializations" : [
             {
+              "value" : {
+                "solid" : "gray:0.25000,1.00000"
+              }
+            },
+            {
               "appearance" : "dark",
               "value" : {
-                "solid" : "gray:1.00000,1.00000"
+                "solid" : "gray:0.75000,1.00000"
               }
             },
             {
               "appearance" : "tinted",
               "value" : {
-                "solid" : "gray:0.81648,1.00000"
+                "solid" : "gray:0.91208,1.00000"
               }
             }
           ],
-          "glass" : true,
-          "image-name" : "icon.png",
-          "name" : "icon",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "名称未設定のアートワーク.png",
+          "name" : "名称未設定のアートワーク",
           "position" : {
-            "scale" : 0.46,
+            "scale" : 0.69,
             "translation-in-points" : [
-              -15.42540325928303,
-              1.746272067088645
+              39.4140625,
+              46.4765625
             ]
           }
         }

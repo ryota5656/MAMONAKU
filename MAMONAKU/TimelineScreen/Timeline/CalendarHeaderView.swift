@@ -5,6 +5,9 @@ struct CalendarHeaderView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Binding var selectedDate: Date
     @Binding var isTwoDayView: Bool
+    var isSettingsHighlighted: Bool = false
+    var onOpenSettings: () -> Void = {}
+    @State private var settingsPulse: Bool = false
 
     var body: some View {
         let cal = Calendar.current
@@ -12,6 +15,7 @@ struct CalendarHeaderView: View {
         let dateText = dateText(for: selectedDate)
         let weekDates = weekDates(for: selectedDate)
         let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
+        let strongAccent = AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme)
 
         VStack(spacing: 8) {
             HStack() {
@@ -25,6 +29,29 @@ struct CalendarHeaderView: View {
                         .offset(y: -4)
                 }
                 Spacer()
+                Button {
+                    onOpenSettings()
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(secondary)
+                        .frame(width: 30, height: 30)
+                        .background(
+                            Circle()
+                                .fill(AppColors.settingsListBackground(palette: themeManager.theme, environmentScheme: colorScheme))
+                        )
+                        .overlay {
+                            if isSettingsHighlighted {
+                                Circle()
+                                    .stroke(strongAccent, lineWidth: 3)
+                                    .scaleEffect(settingsPulse ? 1.35 : 1.05)
+                                    .opacity(settingsPulse ? 0.2 : 0.9)
+                                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: settingsPulse)
+                                    .onAppear { settingsPulse = true }
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
                 Text(dateText)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(secondary)
@@ -126,7 +153,11 @@ struct CalendarHeaderView: View {
 #Preview("CalendarHeader") {
     @Previewable @State var selectedDate = Date()
     @Previewable @State var isTwoDayView = false
-    CalendarHeaderView(selectedDate: $selectedDate, isTwoDayView: $isTwoDayView)
+    CalendarHeaderView(
+        selectedDate: $selectedDate,
+        isTwoDayView: $isTwoDayView,
+        isSettingsHighlighted: true
+    )
         .padding()
         .background(Color(.systemBackground))
         .environmentObject(ThemeManager())

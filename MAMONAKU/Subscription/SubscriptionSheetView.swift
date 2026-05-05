@@ -38,7 +38,7 @@ struct SubscriptionSheetView: View {
                         Text("PLUSでできること")
                             .font(.title3.weight(.bold))
                             .foregroundStyle(primary)
-                        Text("無料版との違いを確認して、年額 / 月額プランを選択できます。")
+                        Text("無料版との違いを確認して、年額 / 月額プランを選択できます。（毎月コーヒー１杯分が、開発の励みになります）")
                             .font(.subheadline)
                             .foregroundStyle(secondary)
                     }
@@ -164,6 +164,7 @@ struct SubscriptionSheetView: View {
             applyDefaultSelectionIfNeeded(from: subscriptionManager.subscriptionProducts)
             Task {
                 await subscriptionManager.loadProducts()
+                await subscriptionManager.updateSubscriptionStatus()
             }
         }
         .onChange(of: subscriptionManager.subscriptionProducts) { _, products in
