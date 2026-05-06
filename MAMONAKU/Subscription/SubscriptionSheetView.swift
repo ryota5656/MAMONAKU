@@ -38,7 +38,7 @@ struct SubscriptionSheetView: View {
                         Text("PLUSでできること")
                             .font(.title3.weight(.bold))
                             .foregroundStyle(primary)
-                        Text("無料版との違いを確認して、年額 / 月額プランを選択できます。（毎月コーヒー１杯分が、開発の励みになります）")
+                        Text("無料版との違いを確認して、期間限定の買い切り / 年額 / 月額プランを選択できます。（毎月コーヒー１杯分が、開発の励みになります）")
                             .font(.subheadline)
                             .foregroundStyle(secondary)
                     }
@@ -120,7 +120,7 @@ struct SubscriptionSheetView: View {
                         }
                     } label: {
                         HStack {
-                            Text("PLUSプランをはじめる")
+                            Text(purchaseButtonTitle)
                                 .font(.headline.weight(.semibold))
                             Spacer()
                             if subscriptionManager.isPurchasing {
@@ -141,7 +141,7 @@ struct SubscriptionSheetView: View {
                     }
                     .disabled(subscriptionManager.isPurchasing || selectedProduct == nil)
 
-                    Text("いつでもキャンセルできます")
+                    Text(purchaseFootnote)
                         .font(.caption2)
                         .foregroundStyle(secondary)
                 }
@@ -150,7 +150,7 @@ struct SubscriptionSheetView: View {
                 .padding(.bottom, 8)
                 .background(.ultraThinMaterial)
             }
-            .navigationTitle("サブスクリプション")
+            .navigationTitle("PLUSプラン")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -180,7 +180,9 @@ struct SubscriptionSheetView: View {
         if let selectedProductID, products.contains(where: { $0.id == selectedProductID }) {
             return
         }
-        selectedProductID = products.first(where: { planLabel(for: $0) == "年額プラン" })?.id ?? products.first?.id
+        selectedProductID = products.first(where: { $0.id == SubscriptionManager.plusLifetimeProductID })?.id
+            ?? products.first(where: { planLabel(for: $0) == "年額プラン" })?.id
+            ?? products.first?.id
     }
 
     private func planRow(
@@ -200,8 +202,8 @@ struct SubscriptionSheetView: View {
                         Text(planLabel(for: product))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(primary)
-                        if planLabel(for: product) == "年額プラン" {
-                            Text("おすすめ")
+                        if let badge = planBadge(for: product) {
+                            Text(badge)
                                 .font(.caption2.weight(.bold))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -270,6 +272,7 @@ struct SubscriptionSheetView: View {
     }
 
     private func planLabel(for product: Product) -> String {
+        if product.id == SubscriptionManager.plusLifetimeProductID { return "買い切りプラン" }
         if product.id == SubscriptionManager.subscriptionYearlyProductID { return "年額プラン" }
         if product.id == SubscriptionManager.subscriptionMonthlyProductID { return "月額プラン" }
         if let period = product.subscription?.subscriptionPeriod {
@@ -283,6 +286,27 @@ struct SubscriptionSheetView: View {
             }
         }
         return "PLUSプラン"
+    }
+
+    private var purchaseButtonTitle: String {
+        guard let selectedProduct else { return "PLUSプランをはじめる" }
+        if selectedProduct.id == SubscriptionManager.plusLifetimeProductID {
+            return "期間限定 買い切りで購入"
+        }
+        return "PLUSプランをはじめる"
+    }
+
+    private var purchaseFootnote: String {
+        guard selectedProduct?.id == SubscriptionManager.plusLifetimeProductID else {
+            return "いつでもキャンセルできます"
+        }
+        return "期間限定の買い切りプランです"
+    }
+
+    private func planBadge(for product: Product) -> String? {
+        if product.id == SubscriptionManager.plusLifetimeProductID { return "期間限定" }
+        if planLabel(for: product) == "年額プラン" { return "おすすめ" }
+        return nil
     }
 }
 
