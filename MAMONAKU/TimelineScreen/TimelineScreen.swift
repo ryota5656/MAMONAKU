@@ -388,8 +388,13 @@ struct TimelineScreen: View {
 
     private func refreshLiveActivityManually() async {
         guard !isLiveActivityRefreshing else { return }
+        let startedAt = Date()
         await MainActor.run { isLiveActivityRefreshing = true }
         await viewModel.startOrUpdateLiveActivity()
+        let remainingDisplayTime = 1.0 - Date().timeIntervalSince(startedAt)
+        if remainingDisplayTime > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(remainingDisplayTime * 1_000_000_000))
+        }
         await MainActor.run { isLiveActivityRefreshing = false }
     }
 

@@ -16,7 +16,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "321"
             endingLineNumber = "321"
-            landmarkName = "syncCalendarFromRealm()"
+            landmarkName = "startCalendarChangeObservation()"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -32,7 +32,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "127"
             endingLineNumber = "127"
-            landmarkName = "updateItem(_:)"
+            landmarkName = "addItem(_:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -48,38 +48,8 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "124"
             endingLineNumber = "124"
-            landmarkName = "updateItem(_:)"
-            landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "B657A852-178A-4AE8-A670-7E51F8ED9FB1 - e2ce2445b46ad2bb"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "MAMONAKU.TimelineRepository.updateItem(MAMONAKU.TimelineItem) -&gt; ()"
-                  moduleName = "MAMONAKU.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/ryota.saito/Documents/GitHub/MAMONAKU/MAMONAKU/Repository/TimelineRepository.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "124"
-                  endingLineNumber = "124">
-               </Location>
-               <Location
-                  uuid = "B657A852-178A-4AE8-A670-7E51F8ED9FB1 - 6456a27db759c9b9"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "closure #1 (MAMONAKU.TimelineItem) -&gt; Swift.Bool in MAMONAKU.TimelineRepository.updateItem(MAMONAKU.TimelineItem) -&gt; ()"
-                  moduleName = "MAMONAKU.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/ryota.saito/Documents/GitHub/MAMONAKU/MAMONAKU/Repository/TimelineRepository.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "124"
-                  endingLineNumber = "124">
-               </Location>
-            </Locations>
+            landmarkName = "TimelineRepository"
+            landmarkType = "3">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy

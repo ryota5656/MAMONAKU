@@ -22,10 +22,11 @@ final class SettingsViewModel: ObservableObject {
     @Published var showSubscriptionSheet: Bool = false
 
     /// 標準カレンダーと同期（App Group UserDefaults と同期。サブスク加入時のみ有効）
-    @Published var calendarSyncEnabled: Bool = true {
+    @Published var calendarSyncEnabled: Bool = false {
         didSet {
             guard effectiveIsSubscribed else { return }
             userDefaults?.set(calendarSyncEnabled, forKey: Self.calendarSyncEnabledKey)
+            timelineRepository.setCalendarSyncEnabled(calendarSyncEnabled)
         }
     }
 
@@ -39,14 +40,16 @@ final class SettingsViewModel: ObservableObject {
             }
             guard effectiveIsSubscribed else { return }
             userDefaults?.set(clamped, forKey: AppGroup.globalBufferMinutesKey)
+            bufferNotificationScheduler.reschedule(items: timelineRepository.fetchItems())
         }
     }
 
     /// バッファ通知のオン/オフ（加入時のみ保存）
-    @Published var bufferNotificationEnabled: Bool = true {
+    @Published var bufferNotificationEnabled: Bool = false {
         didSet {
             guard effectiveIsSubscribed else { return }
             userDefaults?.set(bufferNotificationEnabled, forKey: AppGroup.bufferNotificationEnabledKey)
+            bufferNotificationScheduler.reschedule(items: timelineRepository.fetchItems())
         }
     }
 
@@ -54,6 +57,7 @@ final class SettingsViewModel: ObservableObject {
     @Published var startNotificationEnabled: Bool = true {
         didSet {
             userDefaults?.set(startNotificationEnabled, forKey: AppGroup.startNotificationEnabledKey)
+            startNotificationScheduler.reschedule(items: timelineRepository.fetchItems())
         }
     }
 
@@ -101,6 +105,9 @@ final class SettingsViewModel: ObservableObject {
 
     private var subscriptionObserver: AnyCancellable?
     private let eventStore = EKEventStore()
+    private let timelineRepository: TimelineRepositoryProtocol = TimelineRepository()
+    private let startNotificationScheduler = TimelineStartNotificationScheduler()
+    private let bufferNotificationScheduler = TimelineBufferNotificationScheduler()
 
     init() {
         loadCalendarSyncEnabled()
@@ -113,7 +120,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     private func loadCalendarSyncEnabled() {
-        let value = userDefaults?.object(forKey: Self.calendarSyncEnabledKey) as? Bool ?? true
+        let value = userDefaults?.object(forKey: Self.calendarSyncEnabledKey) as? Bool ?? false
         if calendarSyncEnabled != value {
             calendarSyncEnabled = value
         }
@@ -129,7 +136,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     private func loadBufferNotificationEnabled() {
-        let value = userDefaults?.object(forKey: AppGroup.bufferNotificationEnabledKey) as? Bool ?? true
+        let value = userDefaults?.object(forKey: AppGroup.bufferNotificationEnabledKey) as? Bool ?? false
         if bufferNotificationEnabled != value {
             bufferNotificationEnabled = value
         }

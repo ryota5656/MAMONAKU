@@ -35,8 +35,8 @@ class TimelineViewModel: ObservableObject {
     private let minDurationStep: Int = 15
     private var calendarSyncTimer: AnyCancellable?
     private var liveActivityRefreshTask: Task<Void, Never>?
-    private let soonNotificationID = "liveActivity.soon.notification"
-    private let startNotificationIDPrefix = "liveActivity.start.notification."
+    private let startNotificationScheduler = TimelineStartNotificationScheduler()
+    private let bufferNotificationScheduler = TimelineBufferNotificationScheduler()
     private let liveActivityNamePrefix = "timeline-item:"
     private static let defaultGlobalBufferMinutes = 10
     private static let minBufferMinutes = 1
@@ -319,8 +319,6 @@ class TimelineViewModel: ObservableObject {
 //    func updateLiveActivity() {
 //        liveActivityRefreshTask?.cancel()
 //        liveActivityRefreshTask = nil
-//        cancelSoonNotification()
-//        scheduleStartNotificationsForTodayIfPossible()
 //        let nowSeconds = secondsSinceMidnight(date: Date())
 //        if let next = nextTodayItem(afterSeconds: nowSeconds) {
 //            let cal = Calendar.current
@@ -330,7 +328,6 @@ class TimelineViewModel: ObservableObject {
 //                second: 0,
 //                of: Date()
 //            ) ?? Date()
-//            scheduleSoonNotificationIfPossible(item: next, startDate: startDate)
 //            Task {
 //                await startOrUpdate()
 //            }
@@ -351,143 +348,14 @@ class TimelineViewModel: ObservableObject {
 //        }
 //    }
 
-    /// バッファ分前に time-sensitive 通知を出して次行動を促す。
-    /// 端末設定により画面点灯しない場合があります。
-    private func scheduleSoonNotificationIfPossible(item: TimelineItem, startDate: Date) {
-        guard isBufferNotificationEnabled else { return }
-        guard let bufferMinutes = effectiveBufferMinutes(for: item) else { return }
-        let triggerDate = startDate.addingTimeInterval(TimeInterval(-bufferMinutes * 60))
-        guard triggerDate > Date() else { return }
-
-        let center = UNUserNotificationCenter.current()
-        center.getNotificationSettings { settings in
-            switch settings.authorizationStatus {
-            case .authorized, .provisional, .ephemeral:
-                self.scheduleSoonNotification(title: item.title, triggerDate: triggerDate)
-            case .notDetermined:
-                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-                    guard granted else { return }
-                    self.scheduleSoonNotification(title: item.title, triggerDate: triggerDate)
-                }
-            default:
-                break
-            }
-        }
-    }
-
-    private func scheduleSoonNotification(title: String, triggerDate: Date) {
-        let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: [soonNotificationID])
-
-        let content = UNMutableNotificationContent()
-        content.title = "まもなく開始"
-        content.body = "まもなく「\(title)」です。準備をしましょう"
-        content.sound = .default
-        if #available(iOS 15.0, *) {
-            content.interruptionLevel = .timeSensitive
-        }
-
-        let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: triggerDate)
-        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-        let request = UNNotificationRequest(identifier: soonNotificationID, content: content, trigger: trigger)
-        center.add(request)
-    }
-
-    private func cancelSoonNotification() {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [soonNotificationID])
-    }
-
-    /// 今日の予定開始時刻ちょうどに通知を出す（毎回再スケジュール）
-    private func scheduleStartNotificationsForTodayIfPossible() {
-        guard isStartNotificationEnabled else {
-            cancelStartNotifications()
-            return
-        }
-        let center = UNUserNotificationCenter.current()
-        center.getNotificationSettings { settings in
-            switch settings.authorizationStatus {
-            case .authorized, .provisional, .ephemeral:
-                self.rescheduleStartNotifications()
-            case .notDetermined:
-                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-                    guard granted else { return }
-                    self.rescheduleStartNotifications()
-                }
-            default:
-                break
-            }
-        }
-    }
-
-    private func rescheduleStartNotifications() {
-        let center = UNUserNotificationCenter.current()
-        center.getPendingNotificationRequests { requests in
-            let ids = requests
-                .map(\.identifier)
-                .filter { $0.hasPrefix(self.startNotificationIDPrefix) }
-            if !ids.isEmpty {
-                center.removePendingNotificationRequests(withIdentifiers: ids)
-            }
-
-            let calendar = Calendar.current
-            let now = Date()
-            let startOfToday = calendar.startOfDay(for: now)
-            let todayItems = self.items
-                .filter { item in
-                    guard let dropDate = item.dropDate, item.startMinutes != nil else { return false }
-                    return calendar.isDateInToday(dropDate)
-                }
-                .sorted { ($0.startMinutes ?? 0) < ($1.startMinutes ?? 0) }
-
-            for item in todayItems {
-                guard let startMinutes = item.startMinutes else { continue }
-                guard let startDate = calendar.date(byAdding: .minute, value: startMinutes, to: startOfToday) else { continue }
-                guard startDate > now else { continue }
-
-                let content = UNMutableNotificationContent()
-                content.title = "予定の開始時間です"
-                content.body = "「\(item.title)」を開始しましょう"
-                content.sound = .default
-                if #available(iOS 15.0, *) {
-                    content.interruptionLevel = .timeSensitive
-                }
-
-                let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: startDate)
-                let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-                let request = UNNotificationRequest(
-                    identifier: "\(self.startNotificationIDPrefix)\(item.id.uuidString)",
-                    content: content,
-                    trigger: trigger
-                )
-                center.add(request)
-            }
-        }
-    }
-
-    private func cancelStartNotifications() {
-        let center = UNUserNotificationCenter.current()
-        center.getPendingNotificationRequests { requests in
-            let ids = requests
-                .map(\.identifier)
-                .filter { $0.hasPrefix(self.startNotificationIDPrefix) }
-            if !ids.isEmpty {
-                center.removePendingNotificationRequests(withIdentifiers: ids)
-            }
-        }
-    }
-
     private var appGroupDefaults: UserDefaults? {
         UserDefaults(suiteName: AppGroup.id)
     }
 
     private var isBufferNotificationEnabled: Bool {
         let isSubscribed = appGroupDefaults?.bool(forKey: SubscriptionManager.subscriptionStateUserDefaultsKey) ?? false
-        let isEnabledByUser = appGroupDefaults?.object(forKey: AppGroup.bufferNotificationEnabledKey) as? Bool ?? true
+        let isEnabledByUser = appGroupDefaults?.object(forKey: AppGroup.bufferNotificationEnabledKey) as? Bool ?? false
         return isSubscribed && isEnabledByUser
-    }
-
-    private var isStartNotificationEnabled: Bool {
-        appGroupDefaults?.object(forKey: AppGroup.startNotificationEnabledKey) as? Bool ?? true
     }
 
     private var isLiveActivityEnabled: Bool {
@@ -610,6 +478,7 @@ class TimelineViewModel: ObservableObject {
 
     private func persistItems() {
         repository.saveItems(items)
+        rescheduleTimelineNotifications()
     }
 
     private func selectedDropDate(for date: Date) -> Date {
@@ -623,6 +492,7 @@ class TimelineViewModel: ObservableObject {
         } else {
             items = stored
         }
+        rescheduleTimelineNotifications()
     }
 
     private func startCalendarSyncPolling() {
@@ -638,6 +508,12 @@ class TimelineViewModel: ObservableObject {
         let stored = repository.fetchItems()
         guard stored != items else { return }
         items = stored
+        rescheduleTimelineNotifications()
+    }
+
+    private func rescheduleTimelineNotifications() {
+        startNotificationScheduler.reschedule(items: items)
+        bufferNotificationScheduler.reschedule(items: items)
     }
 
     private func snap(minutes: Int, step: Int) -> Int {
@@ -658,6 +534,219 @@ class TimelineViewModel: ObservableObject {
     }
 }
 
+final class TimelineStartNotificationScheduler {
+    private let startNotificationIDPrefix = "timeline.start.notification."
+    private let legacyStartNotificationIDPrefix = "liveActivity.start.notification."
+    private let maximumScheduledNotifications = 60
+
+    private var appGroupDefaults: UserDefaults? {
+        UserDefaults(suiteName: AppGroup.id)
+    }
+
+    private var isStartNotificationEnabled: Bool {
+        appGroupDefaults?.object(forKey: AppGroup.startNotificationEnabledKey) as? Bool ?? true
+    }
+
+    func reschedule(items: [TimelineItem]) {
+        guard isStartNotificationEnabled else {
+            cancel()
+            return
+        }
+
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                self.replacePendingNotifications(with: items)
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                    guard granted else { return }
+                    self.replacePendingNotifications(with: items)
+                }
+            default:
+                break
+            }
+        }
+    }
+
+    func cancel() {
+        removePendingStartNotifications {
+        }
+    }
+
+    private func replacePendingNotifications(with items: [TimelineItem]) {
+        removePendingStartNotifications {
+            self.scheduleStartNotifications(items: items)
+        }
+    }
+
+    private func removePendingStartNotifications(completion: @escaping () -> Void) {
+        let center = UNUserNotificationCenter.current()
+        center.getPendingNotificationRequests { requests in
+            let ids = requests
+                .map(\.identifier)
+                .filter {
+                    $0.hasPrefix(self.startNotificationIDPrefix)
+                        || $0.hasPrefix(self.legacyStartNotificationIDPrefix)
+                }
+            if !ids.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: ids)
+            }
+            completion()
+        }
+    }
+
+    private func scheduleStartNotifications(items: [TimelineItem]) {
+        let calendar = Calendar.current
+        let now = Date()
+        let scheduledItems: [(item: TimelineItem, startDate: Date)] = items
+            .compactMap { item in
+                guard !item.isAllDay else { return nil }
+                guard let startDate = startDate(for: item, calendar: calendar), startDate > now else { return nil }
+                return (item, startDate)
+            }
+            .sorted { $0.startDate < $1.startDate }
+
+        for (item, startDate) in scheduledItems.prefix(maximumScheduledNotifications) {
+            let content = UNMutableNotificationContent()
+            content.title = "予定の開始時間です"
+            content.body = "「\(item.title)」を開始しましょう"
+            content.sound = .default
+            if #available(iOS 15.0, *) {
+                content.interruptionLevel = .timeSensitive
+            }
+
+            let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: startDate)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+            let request = UNNotificationRequest(
+                identifier: "\(startNotificationIDPrefix)\(item.id.uuidString)",
+                content: content,
+                trigger: trigger
+            )
+            UNUserNotificationCenter.current().add(request)
+        }
+    }
+
+    private func startDate(for item: TimelineItem, calendar: Calendar) -> Date? {
+        guard let dropDate = item.dropDate, let startMinutes = item.startMinutes else { return nil }
+        return calendar.date(byAdding: .minute, value: startMinutes, to: calendar.startOfDay(for: dropDate))
+    }
+}
+
+final class TimelineBufferNotificationScheduler {
+    private static let defaultGlobalBufferMinutes = 10
+    private static let minBufferMinutes = 1
+    private static let maxBufferMinutes = 120
+
+    private let bufferNotificationIDPrefix = "timeline.buffer.notification."
+    private let legacySoonNotificationID = "liveActivity.soon.notification"
+    private let maximumScheduledNotifications = 60
+
+    private var appGroupDefaults: UserDefaults? {
+        UserDefaults(suiteName: AppGroup.id)
+    }
+
+    private var isBufferNotificationEnabled: Bool {
+        let isSubscribed = appGroupDefaults?.bool(forKey: SubscriptionManager.subscriptionStateUserDefaultsKey) ?? false
+        let isEnabledByUser = appGroupDefaults?.object(forKey: AppGroup.bufferNotificationEnabledKey) as? Bool ?? false
+        return isSubscribed && isEnabledByUser
+    }
+
+    private var globalBufferMinutes: Int {
+        let value = appGroupDefaults?.object(forKey: AppGroup.globalBufferMinutesKey) as? Int
+            ?? Self.defaultGlobalBufferMinutes
+        return min(max(value, Self.minBufferMinutes), Self.maxBufferMinutes)
+    }
+
+    func reschedule(items: [TimelineItem]) {
+        guard isBufferNotificationEnabled else {
+            cancel()
+            return
+        }
+
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                self.replacePendingNotifications(with: items)
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                    guard granted else { return }
+                    self.replacePendingNotifications(with: items)
+                }
+            default:
+                break
+            }
+        }
+    }
+
+    func cancel() {
+        removePendingBufferNotifications {
+        }
+    }
+
+    private func replacePendingNotifications(with items: [TimelineItem]) {
+        removePendingBufferNotifications {
+            self.scheduleBufferNotifications(items: items)
+        }
+    }
+
+    private func removePendingBufferNotifications(completion: @escaping () -> Void) {
+        let center = UNUserNotificationCenter.current()
+        center.getPendingNotificationRequests { requests in
+            let ids = requests
+                .map(\.identifier)
+                .filter {
+                    $0.hasPrefix(self.bufferNotificationIDPrefix)
+                        || $0 == self.legacySoonNotificationID
+                }
+            if !ids.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: ids)
+            }
+            completion()
+        }
+    }
+
+    private func scheduleBufferNotifications(items: [TimelineItem]) {
+        let calendar = Calendar.current
+        let now = Date()
+        let bufferMinutes = globalBufferMinutes
+        let scheduledItems: [(item: TimelineItem, triggerDate: Date)] = items
+            .compactMap { item in
+                guard !item.isAllDay else { return nil }
+                guard let startDate = startDate(for: item, calendar: calendar) else { return nil }
+                let triggerDate = startDate.addingTimeInterval(TimeInterval(-bufferMinutes * 60))
+                guard triggerDate > now else { return nil }
+                return (item, triggerDate)
+            }
+            .sorted { $0.triggerDate < $1.triggerDate }
+
+        for (item, triggerDate) in scheduledItems.prefix(maximumScheduledNotifications) {
+            let content = UNMutableNotificationContent()
+            content.title = "まもなく開始"
+            content.body = "まもなく「\(item.title)」です。準備をしましょう"
+            content.sound = .default
+            if #available(iOS 15.0, *) {
+                content.interruptionLevel = .timeSensitive
+            }
+
+            let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: triggerDate)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+            let request = UNNotificationRequest(
+                identifier: "\(bufferNotificationIDPrefix)\(item.id.uuidString)",
+                content: content,
+                trigger: trigger
+            )
+            UNUserNotificationCenter.current().add(request)
+        }
+    }
+
+    private func startDate(for item: TimelineItem, calendar: Calendar) -> Date? {
+        guard let dropDate = item.dropDate, let startMinutes = item.startMinutes else { return nil }
+        return calendar.date(byAdding: .minute, value: startMinutes, to: calendar.startOfDay(for: dropDate))
+    }
+}
+
 
 extension TimelineViewModel {
     
@@ -668,8 +757,6 @@ extension TimelineViewModel {
     
     func startOrUpdateLiveActivity() async {
         print("startOrUpdateLiveActivity")
-        // カウントダウン0（開始時刻）通知を常に最新状態へ再スケジュールする
-        scheduleStartNotificationsForTodayIfPossible()
         guard isLiveActivityEnabled else {
             await endLiveActivityIfNeeded()
             return
@@ -690,7 +777,6 @@ extension TimelineViewModel {
     private func endLiveActivityIfNeeded() async {
         liveActivityRefreshTask?.cancel()
         liveActivityRefreshTask = nil
-        cancelSoonNotification()
 
         let activities = Activity<MAMONAKULiveActivityAttributes>.activities
         for liveActivity in activities where liveActivity.attributes.name.hasPrefix(liveActivityNamePrefix) {
