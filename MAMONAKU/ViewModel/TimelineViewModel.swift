@@ -38,6 +38,7 @@ class TimelineViewModel: ObservableObject {
     private let startNotificationScheduler = TimelineStartNotificationScheduler()
     private let bufferNotificationScheduler = TimelineBufferNotificationScheduler()
     private let liveActivityNamePrefix = "timeline-item:"
+    private let maxMultipleLiveActivityCount = 5
     private static let defaultGlobalBufferMinutes = 10
     private static let minBufferMinutes = 1
     private static let maxBufferMinutes = 120
@@ -766,7 +767,8 @@ extension TimelineViewModel {
         let now = Date()
         let startOfToday = Calendar.current.startOfDay(for: now)
         let candidates = liveActivityCandidates(after: now)
-        let remainingItems = isMultipleLiveActivityEnabled ? Array(candidates.prefix(3)) : Array(candidates.prefix(1))
+        let maxActivityCount = isMultipleLiveActivityEnabled ? maxMultipleLiveActivityCount : 1
+        let remainingItems = Array(candidates.prefix(maxActivityCount))
         await clearExistingTimelineActivities()
 
         for (index, item) in remainingItems.enumerated() {
@@ -829,12 +831,15 @@ extension TimelineViewModel {
         let dismissAfter10Seconds = (startDate ?? Date()).addingTimeInterval(10)
 
         print("startOrUpdateLiveActivityCreate")
-        if let created = try? Activity.request(
-            attributes: attributes,
-            content: content,
-            pushType: nil
-        ) {
+        do {
+            let created = try Activity.request(
+                attributes: attributes,
+                content: content,
+                pushType: nil
+            )
             await created.end(dismissalPolicy: .after(dismissAfter10Seconds))
+        } catch {
+            print("Live Activity creation failed: \(error.localizedDescription)")
         }
     }
 
