@@ -199,14 +199,17 @@ struct WhiteSheetView: View {
                     let showTimeRange = itemHeight > showTimeThreshold
                     ScheduleItemView(
                         item: item,
-                        isEditing: viewModel.editMode.isEditing,
+                        isEditing: viewModel.editingItemID == item.id,
                         showTimeRange: showTimeRange,
                         onEnterEdit: {
-                            if viewModel.editMode.isEditing {
+                            if viewModel.editMode.isEditing && viewModel.editingItemID == item.id {
                                 viewModel.exitEditMode()
                             } else {
-                                viewModel.requestEnterEditMode()
+                                viewModel.requestEnterEditMode(for: item.id)
                             }
+                        },
+                        onTitleCommit: { title in
+                            viewModel.updateItemTitle(id: item.id, title: title)
                         },
                         onResizePreview: { deltaY in
                             viewModel.updateResizePreview(item: item, deltaY: deltaY)
@@ -217,6 +220,7 @@ struct WhiteSheetView: View {
                         onDragStart: {
                             viewModel.dragItemID = $0
                             if !viewModel.isInEditModeExitCooldown() {
+                                viewModel.editingItemID = $0
                                 viewModel.editMode = .active
                             }
                         },

@@ -9,6 +9,7 @@ struct ScheduleItemView: View {
     let isEditing: Bool
     let showTimeRange: Bool
     let onEnterEdit: () -> Void
+    let onTitleCommit: (String) -> Void
     let onResizePreview: (CGFloat) -> Void
     let onResizeEnd: (CGFloat) -> Void
     var onDragStart: ((UUID) -> Void)? = nil
@@ -18,6 +19,9 @@ struct ScheduleItemView: View {
     private let leftBarWidth: CGFloat = 16
     @State private var isBubbleVisible = false
     @State private var isBubbleWiggling = false
+    @State private var draftTitle: String = ""
+    @State private var isTitleEditing = false
+    @FocusState private var isTitleFocused: Bool
 
     private var startTimeText: String {
         guard let start = item.startMinutes else { return "" }
@@ -78,10 +82,30 @@ struct ScheduleItemView: View {
                                 .foregroundStyle(secondaryTextColor)
                         }
 
-                        Text(item.title)
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(primaryTextColor)
-                            .lineLimit(2)
+                        if isEditing && isTitleEditing {
+                            TextField("タイトル", text: $draftTitle)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(primaryTextColor)
+                                .textFieldStyle(.plain)
+                                .lineLimit(1)
+                                .submitLabel(.done)
+                                .focused($isTitleFocused)
+                                .onSubmit {
+                                    commitTitle()
+                                    isTitleEditing = false
+                                    isTitleFocused = false
+                                }
+                        } else {
+                            Text(item.title)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(primaryTextColor)
+                                .lineLimit(2)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    guard isEditing else { return }
+                                    beginTitleEditing()
+                                }
+                        }
 //                            .padding(.top, 1)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -172,6 +196,53 @@ struct ScheduleItemView: View {
                 .padding(10)
             }
         }
+        .onAppear {
+            draftTitle = item.title
+        }
+        .onChange(of: item.id) { _, _ in
+            draftTitle = item.title
+        }
+        .onChange(of: item.title) { _, title in
+            if !isTitleFocused {
+                draftTitle = title
+            }
+        }
+        .onChange(of: isEditing) { _, editing in
+            if editing {
+                draftTitle = item.title
+            } else {
+                if isTitleEditing {
+                    commitTitle()
+                }
+                isTitleEditing = false
+                isTitleFocused = false
+            }
+        }
+        .onChange(of: isTitleFocused) { _, focused in
+            if !focused && isTitleEditing {
+                commitTitle()
+                isTitleEditing = false
+            }
+        }
+    }
+
+    private func beginTitleEditing() {
+        draftTitle = item.title
+        isTitleEditing = true
+        DispatchQueue.main.async {
+            isTitleFocused = true
+        }
+    }
+
+    private func commitTitle() {
+        let trimmedTitle = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            draftTitle = item.title
+            return
+        }
+        guard trimmedTitle != item.title else { return }
+        draftTitle = trimmedTitle
+        onTitleCommit(trimmedTitle)
     }
 
     private var resizeGesture: some Gesture {
@@ -258,6 +329,7 @@ private struct Triangle: Shape {
         isEditing: false,
         showTimeRange: true,
         onEnterEdit: {},
+        onTitleCommit: { _ in },
         onResizePreview: { _ in },
         onResizeEnd: { _ in }
     )
@@ -272,6 +344,7 @@ private struct Triangle: Shape {
         isEditing: true,
         showTimeRange: true,
         onEnterEdit: {},
+        onTitleCommit: { _ in },
         onResizePreview: { _ in },
         onResizeEnd: { _ in }
     )

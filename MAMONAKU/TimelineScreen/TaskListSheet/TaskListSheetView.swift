@@ -232,7 +232,7 @@ struct TaskListSheetView: View {
     private var durationMenu: some View {
         Menu {
             Picker("", selection: $newDurationMinutes) {
-                ForEach(Array(stride(from: 15, through: 240, by: 15)), id: \.self) { minutes in
+                ForEach(Array(stride(from: 15, through: 480, by: 15)), id: \.self) { minutes in
                     Text("\(minutes) min")
                         .foregroundStyle(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
                         .font(.system(size: 10))

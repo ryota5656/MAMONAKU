@@ -24,6 +24,7 @@ class TimelineViewModel: ObservableObject {
     @Published var selectedDate = Date()
     @Published var isTwoDayView = false
     @Published var zoomScale: CGFloat = 1.0
+    @Published var editingItemID: UUID?
 
     /// 長押しで空きに置く「仮」アイテム（日付・開始分）。タイトル入力後に確定 or 取り消し
     @Published var pendingPlacement: (date: Date, startMinutes: Int)?
@@ -245,21 +246,43 @@ class TimelineViewModel: ObservableObject {
         persistItems()
     }
 
+    func updateItemTitle(id: UUID, title: String) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        guard items[index].title != trimmedTitle else { return }
+        let current = items[index]
+        items[index] = TimelineItem(
+            id: current.id,
+            title: trimmedTitle,
+            durationMinutes: current.durationMinutes,
+            startMinutes: current.startMinutes,
+            dropDate: current.dropDate,
+            isCompleted: current.isCompleted,
+            priority: current.priority,
+            isAllDay: current.isAllDay,
+            bufferMinutes: current.bufferMinutes
+        )
+        persistItems()
+    }
+
     /// 編集モードを解除（アイテム以外タップ時など）。解除直後の再入ガードをセットする。
     func exitEditMode() {
         editMode = .inactive
+        editingItemID = nil
         dragItemID = nil
         dropPreview = nil
         lastEditModeExitedAt = Date()
     }
 
     /// 編集モードへ入るリクエスト。解除直後のクールダウン中は無視して false を返す。
-    func requestEnterEditMode() -> Bool {
+    func requestEnterEditMode(for itemID: UUID? = nil) -> Bool {
         if isInEditModeExitCooldown() {
             lastEditModeExitedAt = nil
             return false
         }
         lastEditModeExitedAt = nil
+        editingItemID = itemID
         editMode = .active
         return true
     }
