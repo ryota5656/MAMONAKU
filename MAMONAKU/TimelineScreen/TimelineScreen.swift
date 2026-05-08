@@ -164,6 +164,14 @@ struct TimelineScreen: View {
             onDelete: { id in
                 viewModel.deleteItem(id: id)
             },
+            onUpdate: { id, title, durationMinutes, priority in
+                viewModel.updateItemDetails(
+                    id: id,
+                    title: title,
+                    durationMinutes: durationMinutes,
+                    priority: priority
+                )
+            },
             heightForDuration: { viewModel.heightForDuration($0) },
             onAddDebugTask: { minutes in
                 viewModel.addTestTask(

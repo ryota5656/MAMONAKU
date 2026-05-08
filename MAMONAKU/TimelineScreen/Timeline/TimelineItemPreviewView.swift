@@ -22,6 +22,19 @@ struct ScheduleItemPreviewView: View {
         return String(format: "%02d:%02d", h, m)
     }
 
+    private var endTimeText: String {
+        guard let start = item.startMinutes else { return "" }
+        let end = start + item.durationMinutes
+        let h = (end / 60) % 24
+        let m = end % 60
+        return String(format: "%02d:%02d", h, m)
+    }
+
+    private var timeRangeText: String {
+        guard !startTimeText.isEmpty else { return "" }
+        return "\(startTimeText) - \(endTimeText)"
+    }
+
     var body: some View {
         HStack(spacing: 0) {
 //            RoundedRectangle(cornerRadius: 3)
@@ -30,8 +43,8 @@ struct ScheduleItemPreviewView: View {
 //                .padding(15)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(startTimeText)
-                    .font(.system(size: 12, weight: .semibold))
+                Text(showTimeRange ? timeRangeText : startTimeText)
+                    .font(.system(size: showTimeRange ? 12 : 10, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(.leading, 15)
                 Spacer(minLength: 0)

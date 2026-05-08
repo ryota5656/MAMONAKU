@@ -240,7 +240,7 @@ struct WhiteSheetView: View {
                 let previewHeight = viewModel.heightForDuration(preview.durationMinutes)
                 ScheduleItemPreviewView(
                     item: preview,
-                    showTimeRange: previewHeight > showTimeThreshold
+                    showTimeRange: true
                 )
                 .padding(.trailing, 7)
                 .frame(
@@ -256,7 +256,7 @@ struct WhiteSheetView: View {
                 let previewHeight = viewModel.heightForDuration(preview.durationMinutes)
                 ScheduleItemPreviewView(
                     item: preview,
-                    showTimeRange: previewHeight > showTimeThreshold
+                    showTimeRange: true
                 )
                 .frame(
                     width: itemWidth,

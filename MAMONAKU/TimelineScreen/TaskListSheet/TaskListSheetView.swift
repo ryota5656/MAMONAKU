@@ -14,6 +14,7 @@ struct TaskListSheetView: View {
     let onMove: (IndexSet, Int) -> Void
     let onAdd: (String, Int, TaskPriority) -> Void
     let onDelete: (UUID) -> Void
+    let onUpdate: (UUID, String, Int, TaskPriority) -> Void
     /// ドラッグプレビュー等の高さをタイムラインと揃える（ViewModel.heightForDuration を渡す）
     let heightForDuration: (Int) -> CGFloat
     /// Debug ビルド用: 指定分後に15分のテストタスクを置く
@@ -25,6 +26,7 @@ struct TaskListSheetView: View {
     @State private var newDurationMinutes = 30
     @State private var newPriority: TaskPriority = .medium
     @State private var showTimelineItems = true
+    @State private var editingItemID: UUID?
     @FocusState private var isTaskInputFocused: Bool
 
     private var stockTasks: [TimelineItem] {
@@ -103,6 +105,7 @@ struct TaskListSheetView: View {
                             isDraggingTask: $isDraggingTask,
                             dragItemID: $dragItemID,
                             onDelete: onDelete,
+                            onEdit: { editingItemID = item.id },
                             heightForDuration: heightForDuration
                         )
                         .listRowInsets(.init(top: .zero, leading: 20, bottom: .zero, trailing: .zero))
@@ -120,6 +123,7 @@ struct TaskListSheetView: View {
                                     isDraggingTask: $isDraggingTask,
                                     dragItemID: $dragItemID,
                                     onDelete: onDelete,
+                                    onEdit: { editingItemID = item.id },
                                     heightForDuration: heightForDuration
                                 )
                                 .listRowInsets(.init(top: .zero, leading: 20, bottom: .zero, trailing: .zero))
@@ -161,6 +165,32 @@ struct TaskListSheetView: View {
         .onChange(of: editMode) { _, mode in
             isSheetDraggable = !mode.isEditing
         }
+        .sheet(item: editingItemBinding) { item in
+            TaskEditSheetView(
+                item: item,
+                isSubscribed: isSubscribed,
+                onCancel: {
+                    editingItemID = nil
+                },
+                onSave: { title, durationMinutes, priority in
+                    onUpdate(item.id, title, durationMinutes, isSubscribed ? priority : .low)
+                    editingItemID = nil
+                }
+            )
+            .environmentObject(themeManager)
+        }
+    }
+
+    private var editingItemBinding: Binding<TimelineItem?> {
+        Binding(
+            get: {
+                guard let editingItemID else { return nil }
+                return items.first(where: { $0.id == editingItemID })
+            },
+            set: { item in
+                editingItemID = item?.id
+            }
+        )
     }
 
     private var canAdd: Bool {
@@ -232,7 +262,7 @@ struct TaskListSheetView: View {
     private var durationMenu: some View {
         Menu {
             Picker("", selection: $newDurationMinutes) {
-                ForEach(Array(stride(from: 15, through: 480, by: 15)), id: \.self) { minutes in
+                ForEach(Array(stride(from: 15, through: 480, by: 5)), id: \.self) { minutes in
                     Text("\(minutes) min")
                         .foregroundStyle(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
                         .font(.system(size: 10))
@@ -272,6 +302,7 @@ private struct TaskListRow: View {
     @Binding var isDraggingTask: Bool
     @Binding var dragItemID: UUID?
     let onDelete: (UUID) -> Void
+    let onEdit: () -> Void
     let heightForDuration: (Int) -> CGFloat
     @Environment(\.editMode) private var editMode
 
@@ -340,6 +371,10 @@ private struct TaskListRow: View {
         .opacity(isOnTimeline ? 0.5 : 1)
         .padding(.vertical, 3)
         .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isEditing else { return }
+            onEdit()
+        }
     }
 
     private var textColor: Color {
@@ -375,6 +410,94 @@ private struct TaskListRow: View {
 
     private var isEditing: Bool {
         editMode?.wrappedValue.isEditing ?? false
+    }
+}
+
+private struct TaskEditSheetView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
+    let item: TimelineItem
+    let isSubscribed: Bool
+    let onCancel: () -> Void
+    let onSave: (String, Int, TaskPriority) -> Void
+    @State private var title: String
+    @State private var durationMinutes: Int
+    @State private var priority: TaskPriority
+    @FocusState private var isTitleFocused: Bool
+
+    init(
+        item: TimelineItem,
+        isSubscribed: Bool,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping (String, Int, TaskPriority) -> Void
+    ) {
+        self.item = item
+        self.isSubscribed = isSubscribed
+        self.onCancel = onCancel
+        self.onSave = onSave
+        _title = State(initialValue: item.title)
+        _durationMinutes = State(initialValue: item.durationMinutes)
+        _priority = State(initialValue: isSubscribed ? item.priority : .low)
+    }
+
+    private var canSave: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("タスク") {
+                    TextField("タイトル", text: $title)
+                        .focused($isTitleFocused)
+                        .submitLabel(.done)
+
+                    Picker("時間", selection: $durationMinutes) {
+                        ForEach(Array(stride(from: 15, through: 480, by: 5)), id: \.self) { minutes in
+                            Text("\(minutes) min")
+                                .tag(minutes)
+                        }
+                    }
+
+                    if isSubscribed {
+                        Picker("優先度", selection: $priority) {
+                            ForEach(TaskPriority.allCases, id: \.rawValue) { priority in
+                                Label(priority.displayName, systemImage: priority.iconName)
+                                    .tag(priority)
+                            }
+                        }
+                    } else {
+                        HStack {
+                            Text("優先度")
+                            Spacer()
+                            Label(TaskPriority.low.displayName, systemImage: TaskPriority.low.iconName)
+                                .foregroundStyle(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
+                        }
+                    }
+                }
+            }
+            .navigationTitle("タスクを編集")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("キャンセル", action: onCancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        onSave(
+                            title.trimmingCharacters(in: .whitespacesAndNewlines),
+                            durationMinutes,
+                            isSubscribed ? priority : .low
+                        )
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .onAppear {
+            isTitleFocused = true
+        }
     }
 }
 
@@ -447,6 +570,7 @@ struct PriorityIconView: View {
         onMove: { _, _ in },
         onAdd: { _, _, _ in },
         onDelete: { _ in },
+        onUpdate: { _, _, _, _ in },
         heightForDuration: { CGFloat($0) / 60 * 80 }
     )
     .environmentObject(ThemeManager())

@@ -11,7 +11,7 @@ class TimelineViewModel: ObservableObject {
     let hourHeight: CGFloat = 80
     let timeColumnWidth: CGFloat = 52
     let timelinePadding: CGFloat = 20
-    let minuteStep: Int = 15
+    let minuteStep: Int = 5
 
     @Published var items: [TimelineItem] = []
     @Published var dropPreview: TimelineItem?
@@ -33,7 +33,8 @@ class TimelineViewModel: ObservableObject {
     private var lastEditModeExitedAt: Date?
     private let editModeReenterCooldown: TimeInterval = 0.6
 
-    private let minDurationStep: Int = 15
+    private let minResizeDurationMinutes: Int = 15
+    private let resizeDurationStepMinutes: Int = 5
     private var calendarSyncTimer: AnyCancellable?
     private var liveActivityRefreshTask: Task<Void, Never>?
     private let startNotificationScheduler = TimelineStartNotificationScheduler()
@@ -90,7 +91,7 @@ class TimelineViewModel: ObservableObject {
     }
 
     private let longPressPlaceDurationMinutes: Int = 30
-    private let longPressPlaceStepMinutes: Int = 30
+    private let longPressPlaceStepMinutes: Int = 5
 
     /// 空き箇所を長押ししたとき: 30分単位で仮配置を開始（重なりがなければ pending にセット）
     func startPendingPlacement(date: Date, y: CGFloat) {
@@ -266,6 +267,34 @@ class TimelineViewModel: ObservableObject {
         persistItems()
     }
 
+    func updateItemDetails(
+        id: UUID,
+        title: String,
+        durationMinutes: Int,
+        priority: TaskPriority
+    ) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        let current = items[index]
+        let clampedDuration = clampDuration(start: current.startMinutes ?? 0, duration: durationMinutes)
+        if let startMinutes = current.startMinutes, let dropDate = current.dropDate {
+            guard !isOverlapping(start: startMinutes, duration: clampedDuration, excluding: id, on: dropDate) else { return }
+        }
+        items[index] = TimelineItem(
+            id: current.id,
+            title: trimmedTitle,
+            durationMinutes: clampedDuration,
+            startMinutes: current.startMinutes,
+            dropDate: current.dropDate,
+            isCompleted: current.isCompleted,
+            priority: priority,
+            isAllDay: current.isAllDay,
+            bufferMinutes: current.bufferMinutes
+        )
+        persistItems()
+    }
+
     /// 編集モードを解除（アイテム以外タップ時など）。解除直後の再入ガードをセットする。
     func exitEditMode() {
         editMode = .inactive
@@ -418,7 +447,7 @@ class TimelineViewModel: ObservableObject {
     private func durationForResize(item: TimelineItem, deltaY: CGFloat) -> Int {
         let deltaMinutes = Int((deltaY / (hourHeight * zoomScale)) * 60)
         let rawDuration = item.durationMinutes + deltaMinutes
-        let snapped = snap(minutes: rawDuration, step: minDurationStep)
+        let snapped = snap(minutes: rawDuration, step: resizeDurationStepMinutes)
         let startMinutes = item.startMinutes ?? 0
         return clampDuration(start: startMinutes, duration: snapped)
     }
@@ -553,8 +582,8 @@ class TimelineViewModel: ObservableObject {
     }
 
     private func clampDuration(start: Int, duration: Int) -> Int {
-        let maxDuration = max(minDurationStep, (24 * 60) - start)
-        return max(minDurationStep, min(maxDuration, duration))
+        let maxDuration = max(minResizeDurationMinutes, (24 * 60) - start)
+        return max(minResizeDurationMinutes, min(maxDuration, duration))
     }
 }
 
