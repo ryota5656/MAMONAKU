@@ -148,6 +148,10 @@ struct TaskListSheetView: View {
             Divider()
 
             taskInputRow
+            Text("※ 5分・10分のタスクはタイムライン上で表示が崩れる場合があります")
+                .font(.system(size: 10))
+                .foregroundStyle(secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 12)
@@ -262,7 +266,7 @@ struct TaskListSheetView: View {
     private var durationMenu: some View {
         Menu {
             Picker("", selection: $newDurationMinutes) {
-                ForEach(Array(stride(from: 15, through: 480, by: 5)), id: \.self) { minutes in
+                ForEach(Array(stride(from: 5, through: 480, by: 5)), id: \.self) { minutes in
                     Text("\(minutes) min")
                         .foregroundStyle(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
                         .font(.system(size: 10))
@@ -453,7 +457,7 @@ private struct TaskEditSheetView: View {
                         .submitLabel(.done)
 
                     Picker("時間", selection: $durationMinutes) {
-                        ForEach(Array(stride(from: 15, through: 480, by: 5)), id: \.self) { minutes in
+                        ForEach(Array(stride(from: 5, through: 480, by: 5)), id: \.self) { minutes in
                             Text("\(minutes) min")
                                 .tag(minutes)
                         }
