@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1B8AC19DF6C0AC22521EF3D8 /* Nimble in Frameworks */ = {isa = PBXBuildFile; productRef = 396F6AD68D5DB0EE03BD742C /* Nimble */; };
+		1F934311194F875C9431E5AE /* Quick in Frameworks */ = {isa = PBXBuildFile; productRef = 3320E5F32D0711761D7E48F1 /* Quick */; };
 		4B68989E2F89E8A900B6EB12 /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 4B68989D2F89E8A900B6EB12 /* icon.icon */; };
 		4B98BC3C2F5DCD76003D42C5 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4B98BC3B2F5DCD76003D42C5 /* StoreKit.framework */; };
 		4BAB881B2F37934D00B75F3D /* RealmSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4BAB881A2F37934D00B75F3D /* RealmSwift */; };
@@ -154,6 +156,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1B8AC19DF6C0AC22521EF3D8 /* Nimble in Frameworks */,
+				1F934311194F875C9431E5AE /* Quick in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -259,6 +263,8 @@
 			);
 			name = MAMONAKUTests;
 			packageProductDependencies = (
+				396F6AD68D5DB0EE03BD742C /* Nimble */,
+				3320E5F32D0711761D7E48F1 /* Quick */,
 			);
 			productName = MAMONAKUTests;
 			productReference = 4BD9F7DA2F1D16EE0094BC8C /* MAMONAKUTests.xctest */;
@@ -347,6 +353,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4BAB88192F37934D00B75F3D /* XCRemoteSwiftPackageReference "realm-swift" */,
+				8AC433F677BFA57897060CEB /* XCRemoteSwiftPackageReference "Nimble" */,
+				D6730E4B88730EF9165EC24A /* XCRemoteSwiftPackageReference "Quick" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4BD9F7CE2F1D16EC0094BC8C /* Products */;
@@ -901,9 +909,35 @@
 				kind = branch;
 			};
 		};
+		8AC433F677BFA57897060CEB /* XCRemoteSwiftPackageReference "Nimble" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Quick/Nimble.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 14.0.0;
+			};
+		};
+		D6730E4B88730EF9165EC24A /* XCRemoteSwiftPackageReference "Quick" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Quick/Quick.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.6.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		3320E5F32D0711761D7E48F1 /* Quick */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D6730E4B88730EF9165EC24A /* XCRemoteSwiftPackageReference "Quick" */;
+			productName = Quick;
+		};
+		396F6AD68D5DB0EE03BD742C /* Nimble */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AC433F677BFA57897060CEB /* XCRemoteSwiftPackageReference "Nimble" */;
+			productName = Nimble;
+		};
 		4BAB881A2F37934D00B75F3D /* RealmSwift */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4BAB88192F37934D00B75F3D /* XCRemoteSwiftPackageReference "realm-swift" */;

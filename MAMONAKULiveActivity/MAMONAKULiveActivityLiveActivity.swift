@@ -50,46 +50,6 @@ struct MAMONAKULiveActivityLiveActivity: Widget {
                     let task = getCurrentTask(from: context.state.schedule)
                     Text(task?.nextTitle ?? "完了")
                 }
-                // 長押し時: タイトルと開始時間を表示
-//                DynamicIslandExpandedRegion(.leading) {
-//                    if let startDate = context.state.nextStartDate {
-//                        VStack(alignment: .leading, spacing: 2) {
-//                            Text("Next")
-//                                .font(.caption2)
-//                                .foregroundStyle(.secondary)
-//                            Text(startDate, style: .time)
-//                                .font(.subheadline.monospacedDigit().weight(.semibold))
-//                        }
-//                        .padding(.leading, 20)
-//                    } else {
-//                        Text("--:--")
-//                            .font(.subheadline.monospacedDigit())
-//                    }
-//                }
-//                DynamicIslandExpandedRegion(.trailing) {
-//                    if let startDate = context.state.nextStartDate {
-//                        CountdownText(
-//                            startDate: context.state.countdownStartDate ?? Date(),
-//                            targetDate: startDate
-//                        )
-//                            .font(.caption.monospacedDigit())
-//                    } else {
-//                        Text("--:--")
-//                            .font(.caption.monospacedDigit())
-//                    }
-//                }
-//                DynamicIslandExpandedRegion(.bottom) {
-//                    VStack(alignment: .leading, spacing: 4) {
-//                        Text("Title")
-//                            .font(.caption2)
-//                            .foregroundStyle(.secondary)
-//                        Text(context.state.nextTitle.isEmpty ? "NO PLAN" : context.state.nextTitle)
-//                            .font(.subheadline.weight(.medium))
-//                            .lineLimit(2)
-//                    }
-//                    .padding(.leading, 20)
-//                    .frame(maxWidth: .infinity, alignment: .leading)
-//                }
             } compactLeading: {
                 Image(systemName: "clock")
                     .font(.system(size: 12, weight: .semibold))
@@ -310,38 +270,3 @@ extension MAMONAKULiveActivityAttributes {
         MAMONAKULiveActivityAttributes(name: "World")
     }
 }
-
-//extension MAMONAKULiveActivityAttributes.ContentState {
-//    fileprivate static var upcoming: MAMONAKULiveActivityAttributes.ContentState {
-//        MAMONAKULiveActivityAttributes.ContentState(
-//            nextTitle: "Wake up",
-//            nextStartDate: Date().addingTimeInterval(25 * 60),
-//            countdownStartDate: Date(),
-//            remainingTimeShort: "25:00"
-//        )
-//     }
-//}
-//
-//#Preview("Lock Screen", as: .content, using: MAMONAKULiveActivityAttributes.preview) {
-//    MAMONAKULiveActivityLiveActivity()
-//} contentStates: {
-//    MAMONAKULiveActivityAttributes.ContentState.upcoming
-//}
-//
-//#Preview("Dynamic Island - Expanded", as: .dynamicIsland(.expanded), using: MAMONAKULiveActivityAttributes.preview) {
-//    MAMONAKULiveActivityLiveActivity()
-//} contentStates: {
-//    MAMONAKULiveActivityAttributes.ContentState.upcoming
-//}
-//
-//#Preview("Dynamic Island - Compact", as: .dynamicIsland(.compact), using: MAMONAKULiveActivityAttributes.preview) {
-//    MAMONAKULiveActivityLiveActivity()
-//} contentStates: {
-//    MAMONAKULiveActivityAttributes.ContentState.upcoming
-//}
-//
-//#Preview("Dynamic Island - Minimal", as: .dynamicIsland(.minimal), using: MAMONAKULiveActivityAttributes.preview) {
-//    MAMONAKULiveActivityLiveActivity()
-//} contentStates: {
-//    MAMONAKULiveActivityAttributes.ContentState.upcoming
-//}
