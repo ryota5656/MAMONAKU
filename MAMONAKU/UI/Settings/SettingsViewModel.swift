@@ -12,32 +12,14 @@ import EventKit
 import UserNotifications
 import UIKit
 
-final class SettingsViewModel: ObservableObject {
-    struct ViewState: Equatable {
-        var showSubscriptionSheet: Bool
-        var subscriptionStatusText: String
-        var effectiveIsSubscribed: Bool
-
-        var isCalendarSyncToggleEnabled: Bool
-        var calendarSyncEnabled: Bool
-
-        var isThemeSettingEnabled: Bool
-        var availableThemes: [AppPalette]
-
-        var notificationPermissionEnabled: Bool
-        var startNotificationEnabled: Bool
-        var liveActivityEnabled: Bool
-        var multipleLiveActivityEnabled: Bool
-        var bufferNotificationEnabled: Bool
-        var globalBufferMinutes: Int
-
-        var isBufferSettingEnabled: Bool
-        var isBufferMinutesVisible: Bool
-    }
-
+@MainActor
+final class SettingsViewModel: ObservableObject, SettingsDelegate {
     enum Route: Equatable {
         case openURL(URL)
     }
+
+    /// テーマ適用は ThemeManager を Screen 側から注入する
+    var onApplyTheme: ((AppPalette) -> Void)?
 
     private static let calendarSyncEnabledKey = "calendar_sync_enabled"
     private static let defaultGlobalBufferMinutes = 10
@@ -149,8 +131,8 @@ final class SettingsViewModel: ObservableObject {
         refreshNotificationPermissionStatus()
     }
 
-    var state: ViewState {
-        ViewState(
+    var state: SettingsViewState {
+        SettingsViewState(
             showSubscriptionSheet: showSubscriptionSheet,
             subscriptionStatusText: subscriptionStatusText,
             effectiveIsSubscribed: effectiveIsSubscribed,
@@ -171,6 +153,45 @@ final class SettingsViewModel: ObservableObject {
 
     func handleRouteConsumed() {
         route = nil
+    }
+
+    // MARK: - SettingsDelegate
+
+    func settingsDidAppear(subscriptionManager: SubscriptionManager) {
+        self.subscriptionManager = subscriptionManager
+        refreshNotificationPermissionStatus()
+    }
+
+    func settingsOpenSubscriptionSheet() {
+        openSubscriptionSheet()
+    }
+
+    func settingsSelectTheme(_ theme: AppPalette) {
+        selectTheme(theme, apply: onApplyTheme ?? { _ in })
+    }
+
+    func settingsCanSelectTheme(_ theme: AppPalette) -> Bool {
+        canSelectTheme(theme)
+    }
+
+    func settingsIncrementBufferMinutes() {
+        incrementBufferMinutes()
+    }
+
+    func settingsDecrementBufferMinutes() {
+        decrementBufferMinutes()
+    }
+
+    func settingsOpenMailFeedback() {
+        openMailFeedback()
+    }
+
+    func settingsOpenTerms() {
+        openTerms()
+    }
+
+    func settingsOpenPrivacyPolicy() {
+        openPrivacyPolicy()
     }
 
     private func loadCalendarSyncEnabled() {

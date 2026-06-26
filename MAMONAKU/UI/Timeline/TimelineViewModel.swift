@@ -5,10 +5,10 @@ import ActivityKit
 import UserNotifications
 
 @MainActor
-class TimelineViewModel: ObservableObject {
+final class TimelineViewModel: ObservableObject, TimelineDelegate {
     private let repository: TimelineRepositoryProtocol
 
-    @Published var screen = TimelineScreenViewState()
+    @Published var state = TimelineViewState()
     
     private let tutorialCompletedKey = "tutorial.firstRun.completed"
     private let isRadialMenuEnabled = true
@@ -69,79 +69,70 @@ class TimelineViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Screen events
+    // MARK: - TimelineDelegate
 
-    // 画面表示時に初回チュートリアルを開始する（未完了かつプレビュー以外）
-    func screenOnAppear(ensureTutorialTask: () -> Void) {
+    func timelineDidAppear(ensureTutorialTask: () -> Void) {
         startFirstRunTutorialIfNeeded(ensureTutorialTask: ensureTutorialTask)
     }
 
-    // アイテム変更時にチュートリアル進行を判定する（タスク配置ステップの完了検知）
-    func screenOnItemsChanged(hasPlacedTutorialTaskAfterNow: () -> Bool) {
-        if screen.tutorialStep == .placeTaskAfterNow, hasPlacedTutorialTaskAfterNow() {
-            screen.tutorialStep = .confirmCountdown
+    func timelineItemsDidChange(hasPlacedTutorialTaskAfterNow: () -> Bool) {
+        if state.tutorialStep == .placeTaskAfterNow, hasPlacedTutorialTaskAfterNow() {
+            state.tutorialStep = .confirmCountdown
         }
     }
 
-    // ドラッグ中にタイムライン上へプレビューが表示されたらタスクシートを閉じる
-    func screenOnDropPreviewChanged(previewExists: Bool) {
-        guard screen.isTaskSheetPresented, screen.isDraggingTask, previewExists else { return }
-        screen.isTaskSheetPresented = false
+    func timelineDropPreviewDidChange(previewExists: Bool) {
+        guard state.isTaskSheetPresented, state.isDraggingTask, previewExists else { return }
+        state.isTaskSheetPresented = false
     }
 
-    // ヘッダー（カウントダウン）の展開・折りたたみを切り替える
-    func screenToggleHeaderExpanded() {
-        screen.isHeaderExpanded.toggle()
+    func timelineToggleHeaderExpanded() {
+        state.isHeaderExpanded.toggle()
     }
 
-    // タスクリストシートを開く（チュートリアル中は次ステップへ進める）
-    func screenOpenTaskSheet() {
-        screen.isTaskSheetPresented = true
-        if screen.tutorialStep == .openTaskList {
-            screen.tutorialStep = .placeTaskAfterNow
+    func timelineOpenTaskSheet() {
+        state.isTaskSheetPresented = true
+        if state.tutorialStep == .openTaskList {
+            state.tutorialStep = .placeTaskAfterNow
         }
     }
 
-    // 設定画面を開く
-    func screenOpenSettings() {
-        screen.isSettingsPresented = true
+    func timelineOpenSettings() {
+        state.isSettingsPresented = true
     }
 
-    // ラジアルメニューから Live Activity を手動更新する（最低1秒ローディング表示）
-    func screenRefreshLiveActivityManually() async {
-        guard !screen.isLiveActivityRefreshing else { return }
+    func timelineRefreshLiveActivityManually() async {
+        guard !state.isLiveActivityRefreshing else { return }
         let startedAt = Date()
-        screen.isLiveActivityRefreshing = true
+        state.isLiveActivityRefreshing = true
         await startOrUpdateLiveActivity()
         let remainingDisplayTime = 1.0 - Date().timeIntervalSince(startedAt)
         if remainingDisplayTime > 0 {
             try? await Task.sleep(nanoseconds: UInt64(remainingDisplayTime * 1_000_000_000))
         }
-        screen.isLiveActivityRefreshing = false
+        state.isLiveActivityRefreshing = false
     }
 
-   // チュートリアルの「次へ」で次のステップへ進む（最終ステップで完了フラグを保存）
-    func screenAdvanceTutorialStep() {
-        guard let step = screen.tutorialStep else { return }
+    func timelineAdvanceTutorialStep() {
+        guard let step = state.tutorialStep else { return }
         switch step {
         case .openTaskList:
-            screen.tutorialStep = .placeTaskAfterNow
+            state.tutorialStep = .placeTaskAfterNow
         case .placeTaskAfterNow:
-            screen.tutorialStep = .confirmCountdown
+            state.tutorialStep = .confirmCountdown
         case .confirmCountdown:
-            screen.tutorialStep = .explainLongPress
+            state.tutorialStep = .explainLongPress
         case .explainLongPress:
-            screen.tutorialStep = .explainLiveActivityFromPlus
+            state.tutorialStep = .explainLiveActivityFromPlus
         case .explainLiveActivityFromPlus:
-            screen.tutorialStep = .explainSettingsAndSubscription
+            state.tutorialStep = .explainSettingsAndSubscription
         case .explainSettingsAndSubscription:
-            screen.tutorialStep = nil
+            state.tutorialStep = nil
             UserDefaults.standard.set(true, forKey: tutorialCompletedKey)
         }
     }
 
-   // ＋ボタン長押し中の指位置から、選択中のラジアルメニュー項目を返す
-    func screenRadialAction(at location: CGPoint, in size: CGSize) -> TimelineRadialAction? {
+    func timelineRadialAction(at location: CGPoint, in size: CGSize) -> TimelineRadialAction? {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let threshold: CGFloat = 22
         for action in TimelineRadialAction.allCases {
@@ -155,19 +146,26 @@ class TimelineViewModel: ObservableObject {
         return nil
     }
 
-   // ラジアルメニュー（長押し＋）が有効かどうか
-    func screenIsRadialMenuEnabled() -> Bool { isRadialMenuEnabled }
+    func timelineIsRadialMenuEnabled() -> Bool { isRadialMenuEnabled }
+
+    func timelineTriggerRadialAction(_ action: TimelineRadialAction) {
+        switch action {
+        case .settings:
+            timelineOpenSettings()
+        case .refreshLiveActivity:
+            Task { await timelineRefreshLiveActivityManually() }
+        }
+    }
 
     private func startFirstRunTutorialIfNeeded(ensureTutorialTask: () -> Void) {
         guard !isRunningInPreview else {
-            screen.tutorialStep = nil
+            state.tutorialStep = nil
             return
         }
         guard !UserDefaults.standard.bool(forKey: tutorialCompletedKey) else { return }
         ensureTutorialTask()
-        screen.tutorialStep = .openTaskList
+        state.tutorialStep = .openTaskList
     }
-    
    // ストックのタスクをドロップ位置の時刻にタイムラインへ配置する
     func addItem(item: TimelineItem, dropY: CGFloat, on date: Date) {
         let start = startMinutesForDrop(duration: item.durationMinutes, dropY: dropY, on: date)

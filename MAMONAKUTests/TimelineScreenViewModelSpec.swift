@@ -5,49 +5,50 @@ import Nimble
 
 final class TimelineScreenViewModelSpec: QuickSpec {
     override class func spec() {
-        describe("TimelineScreenViewModel") {
-            func makeDefaults() -> UserDefaults {
-                let suite = "TimelineScreenViewModelSpec.\(UUID().uuidString)"
-                let ud = UserDefaults(suiteName: suite)!
-                ud.removePersistentDomain(forName: suite)
-                return ud
+        describe("TimelineViewModel (screen delegate)") {
+            @MainActor
+            func makeViewModel() -> TimelineViewModel {
+                TimelineViewModel(initialItems: [], enablePolling: false)
             }
 
             it("starts tutorial on first run") {
-                let ud = makeDefaults()
-                ud.set(false, forKey: "tutorial.firstRun.completed")
-                let vm = TimelineScreenViewModel(userDefaults: ud, isRunningInPreview: false)
+                UserDefaults.standard.set(false, forKey: "tutorial.firstRun.completed")
+                let vm = MainActor.assumeIsolated { makeViewModel() }
 
-                vm.onAppear(ensureTutorialTask: {})
+                MainActor.assumeIsolated {
+                    vm.timelineDidAppear(ensureTutorialTask: {})
+                }
 
-                expect(vm.state.tutorialStep).to(equal(.openTaskList))
+                expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.openTaskList))
             }
 
             it("advances tutorial steps") {
-                let ud = makeDefaults()
-                ud.set(false, forKey: "tutorial.firstRun.completed")
-                let vm = TimelineScreenViewModel(userDefaults: ud, isRunningInPreview: false)
+                UserDefaults.standard.set(false, forKey: "tutorial.firstRun.completed")
+                let vm = MainActor.assumeIsolated { makeViewModel() }
 
-                vm.onAppear(ensureTutorialTask: {})
-                vm.advanceTutorialStep()
-                expect(vm.state.tutorialStep).to(equal(.placeTaskAfterNow))
+                MainActor.assumeIsolated {
+                    vm.timelineDidAppear(ensureTutorialTask: {})
+                    vm.timelineAdvanceTutorialStep()
+                }
+                expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.placeTaskAfterNow))
 
-                vm.advanceTutorialStep()
-                expect(vm.state.tutorialStep).to(equal(.confirmCountdown))
+                MainActor.assumeIsolated {
+                    vm.timelineAdvanceTutorialStep()
+                }
+                expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.confirmCountdown))
             }
 
             it("opens task sheet and advances from openTaskList") {
-                let ud = makeDefaults()
-                ud.set(false, forKey: "tutorial.firstRun.completed")
-                let vm = TimelineScreenViewModel(userDefaults: ud, isRunningInPreview: false)
-                vm.onAppear(ensureTutorialTask: {})
+                UserDefaults.standard.set(false, forKey: "tutorial.firstRun.completed")
+                let vm = MainActor.assumeIsolated { makeViewModel() }
+                MainActor.assumeIsolated {
+                    vm.timelineDidAppear(ensureTutorialTask: {})
+                    vm.timelineOpenTaskSheet()
+                }
 
-                vm.openTaskSheet()
-
-                expect(vm.state.isTaskSheetPresented).to(beTrue())
-                expect(vm.state.tutorialStep).to(equal(.placeTaskAfterNow))
+                expect(MainActor.assumeIsolated { vm.state.isTaskSheetPresented }).to(beTrue())
+                expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.placeTaskAfterNow))
             }
         }
     }
 }
-

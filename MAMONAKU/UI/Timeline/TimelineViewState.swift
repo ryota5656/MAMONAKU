@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// タイムライン画面の UI 状態（シート・チュートリアル・ラジアルメニューなど）
-struct TimelineScreenViewState: Equatable {
+/// タイムライン画面の UI 状態（シート・チュートリアル・ラジアルメニューなど）。Screen と 1:1。
+struct TimelineViewState: Equatable {
     var sheetHeight: CGFloat = 0
     var isHeaderExpanded: Bool = true
     var isTaskSheetPresented: Bool = false

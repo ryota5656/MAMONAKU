@@ -25,23 +25,27 @@ final class SettingsViewModelSpec: QuickSpec {
         describe("SettingsViewModel") {
             it("increments buffer minutes (1 -> 5)") {
                 let repo = FakeTimelineRepository()
-                let vm = SettingsViewModel(timelineRepository: repo)
+                let vm = MainActor.assumeIsolated { SettingsViewModel(timelineRepository: repo) }
 
                 // NOTE: effectiveIsSubscribed depends on AppGroup defaults; in DEBUG, the app may already treat subscribed.
-                vm.globalBufferMinutes = 1
-                vm.incrementBufferMinutes()
+                MainActor.assumeIsolated {
+                    vm.globalBufferMinutes = 1
+                    vm.incrementBufferMinutes()
+                }
 
-                expect(vm.globalBufferMinutes).to(equal(5))
+                expect(MainActor.assumeIsolated { vm.globalBufferMinutes }).to(equal(5))
             }
 
             it("decrements buffer minutes (5 -> 1)") {
                 let repo = FakeTimelineRepository()
-                let vm = SettingsViewModel(timelineRepository: repo)
+                let vm = MainActor.assumeIsolated { SettingsViewModel(timelineRepository: repo) }
 
-                vm.globalBufferMinutes = 5
-                vm.decrementBufferMinutes()
+                MainActor.assumeIsolated {
+                    vm.globalBufferMinutes = 5
+                    vm.decrementBufferMinutes()
+                }
 
-                expect(vm.globalBufferMinutes).to(equal(1))
+                expect(MainActor.assumeIsolated { vm.globalBufferMinutes }).to(equal(1))
             }
         }
     }
