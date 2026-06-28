@@ -45,10 +45,12 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
     private let resizeDurationStepMinutes: Int = 5
     private var calendarSyncTimer: AnyCancellable?
     private var liveActivityRefreshTask: Task<Void, Never>?
+    private var commitSyncObserver: NSObjectProtocol?
+    private var foregroundRefreshObserver: NSObjectProtocol?
     private let startNotificationScheduler = TimelineStartNotificationScheduler()
     private let bufferNotificationScheduler = TimelineBufferNotificationScheduler()
     private let liveActivityNamePrefix = "timeline-item:"
-    private let maxMultipleLiveActivityCount = 5
+    private let liveActivityStackName = "timeline-stack"
     private static let defaultGlobalBufferMinutes = 10
     private static let minBufferMinutes = 1
     private static let maxBufferMinutes = 120
@@ -66,6 +68,34 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         }
         if enablePolling {
             startCalendarSyncPolling()
+        }
+        state.isLiveActivitySyncPending = LiveActivitySyncCoordinator.isPending
+        commitSyncObserver = NotificationCenter.default.addObserver(
+            forName: LiveActivitySyncCoordinator.commitNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.commitPendingLiveActivitySync()
+            }
+        }
+        foregroundRefreshObserver = NotificationCenter.default.addObserver(
+            forName: LiveActivitySyncCoordinator.foregroundRefreshNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.refreshLiveActivityIfOverdue()
+            }
+        }
+    }
+
+    deinit {
+        if let commitSyncObserver {
+            NotificationCenter.default.removeObserver(commitSyncObserver)
+        }
+        if let foregroundRefreshObserver {
+            NotificationCenter.default.removeObserver(foregroundRefreshObserver)
         }
     }
 
@@ -105,7 +135,7 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         guard !state.isLiveActivityRefreshing else { return }
         let startedAt = Date()
         state.isLiveActivityRefreshing = true
-        await startOrUpdateLiveActivity()
+        await commitPendingLiveActivitySync(force: true)
         let remainingDisplayTime = 1.0 - Date().timeIntervalSince(startedAt)
         if remainingDisplayTime > 0 {
             try? await Task.sleep(nanoseconds: UInt64(remainingDisplayTime * 1_000_000_000))
@@ -331,6 +361,8 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
     func deleteItem(id: UUID) {
         repository.deleteItemAndEvent(id: id)
         items = repository.fetchItems()
+        rescheduleTimelineNotifications()
+        markLiveActivitySyncPending()
     }
 
    // タイムライン上のアイテムをストックに戻す（開始時刻・日付を解除）
@@ -508,10 +540,12 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         return isEnabledByUser
     }
 
-    private var isMultipleLiveActivityEnabled: Bool {
-        let isSubscribed = appGroupDefaults?.bool(forKey: SubscriptionManager.subscriptionStateUserDefaultsKey) ?? false
-        let isEnabledByUser = appGroupDefaults?.object(forKey: AppGroup.liveActivityMultipleEnabledKey) as? Bool ?? false
-        return isSubscribed && isEnabledByUser
+    private var isPlusSubscriber: Bool {
+        appGroupDefaults?.bool(forKey: SubscriptionManager.subscriptionStateUserDefaultsKey) ?? false
+    }
+
+    private var liveActivityPlanScope: LiveActivityScheduleBuilder.PlanScope {
+        isPlusSubscriber ? .plus : .free
     }
 
     private func effectiveBufferMinutes(for item: TimelineItem) -> Int? {
@@ -625,6 +659,7 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
     private func persistItems() {
         repository.saveItems(items)
         rescheduleTimelineNotifications()
+        markLiveActivitySyncPending()
     }
 
     private func selectedDropDate(for date: Date) -> Date {
@@ -655,6 +690,7 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         guard stored != items else { return }
         items = stored
         rescheduleTimelineNotifications()
+        markLiveActivitySyncPending()
     }
 
     private func rescheduleTimelineNotifications() {
@@ -678,30 +714,132 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         let maxDuration = max(minResizeDurationMinutes, (24 * 60) - start)
         return max(minResizeDurationMinutes, min(maxDuration, duration))
     }
+
+    private func markLiveActivitySyncPending() {
+        guard isLiveActivityEnabled else { return }
+        LiveActivitySyncCoordinator.markPending()
+        state.isLiveActivitySyncPending = true
+        print("[LiveActivity] Sync pending — commit on background or manual refresh")
+    }
+
+    /// 未反映の変更があれば Live Activity と Cloud Tasks を更新する。
+    func commitPendingLiveActivitySync(force: Bool = false) async {
+        guard force || LiveActivitySyncCoordinator.isPending else { return }
+        guard isLiveActivityEnabled else {
+            LiveActivitySyncCoordinator.clearPending()
+            state.isLiveActivitySyncPending = false
+            return
+        }
+        print("[LiveActivity] Committing pending sync (force=\(force))")
+        await startOrUpdateLiveActivity()
+        LiveActivitySyncCoordinator.clearPending()
+        state.isLiveActivitySyncPending = false
+    }
 }
 
 // MARK: - LiveActivity
 extension TimelineViewModel {
 
-   // 今日のこれから始まる予定に Live Activity を作成・更新する
+    /// 今日の予定からスタック型 Live Activity（最大3件）を作成・更新し、Cloud Tasks にローテーションを予約する。
     func startOrUpdateLiveActivity() async {
-        print("startOrUpdateLiveActivity")
         guard isLiveActivityEnabled else {
             await endLiveActivityIfNeeded()
+            await LiveActivityPushService.shared.syncSchedule(rotations: [])
             return
         }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
         let now = Date()
-        let startOfToday = Calendar.current.startOfDay(for: now)
-        let candidates = liveActivityCandidates(after: now)
-        let maxActivityCount = isMultipleLiveActivityEnabled ? maxMultipleLiveActivityCount : 1
-        let remainingItems = Array(candidates.prefix(maxActivityCount))
-        await clearExistingTimelineActivities()
+        let planScope = liveActivityPlanScope
+        let entries = LiveActivityScheduleBuilder.entriesForToday(
+            items: items,
+            referenceDate: now,
+            planScope: planScope
+        )
+        let (startIndex, window) = LiveActivityScheduleBuilder.currentWindow(
+            entries: entries,
+            now: now,
+            planScope: planScope
+        )
 
-        for (index, item) in remainingItems.enumerated() {
-            await requestLiveActivity(for: item, at: index, startOfToday: startOfToday)
+        guard !window.isEmpty else {
+            await endLiveActivityIfNeeded()
+            await LiveActivityPushService.shared.syncSchedule(rotations: [])
+            return
         }
+
+        let schedule = LiveActivityScheduleBuilder.buildTaskItems(
+            from: window,
+            now: now,
+            bufferMinutes: { [weak self] item in
+                self?.effectiveBufferMinutes(for: item)
+            }
+        )
+        let rotations = LiveActivityScheduleBuilder.buildRotations(
+            entries: entries,
+            startIndex: startIndex,
+            now: now,
+            planScope: planScope,
+            bufferMinutes: { [weak self] item in
+                self?.effectiveBufferMinutes(for: item)
+            }
+        )
+
+        print("[LiveActivity] Plan scope: \(planScope == .plus ? "PLUS" : "free"), entries: \(entries.count), visible: \(schedule.count)")
+
+        let staleDate = entries[startIndex].startDate
+        await upsertStackLiveActivity(schedule: schedule, staleDate: staleDate)
+        scheduleNextLocalRotation(rotations)
+        await LiveActivityPushService.shared.syncSchedule(rotations: rotations)
+    }
+
+    /// プライマリのカウントダウンが 0:00 を過ぎていたら、次の予定へ切り替える。
+    func refreshLiveActivityIfOverdue() async {
+        guard isLiveActivityEnabled else { return }
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        guard let activity = Activity<MAMONAKULiveActivityAttributes>.activities.first(where: {
+            isManagedLiveActivity($0)
+        }) else { return }
+
+        guard let primary = activity.content.state.schedule.first,
+              let target = primary.nextStartDate,
+              target <= Date()
+        else { return }
+
+        print("[LiveActivity] Overdue refresh — primary target was \(target.formatted())")
+        await startOrUpdateLiveActivity()
+    }
+
+    /// Cloud Tasks が届かない場合のフォールバック。次のローテーション時刻にローカル更新する。
+    private func scheduleNextLocalRotation(_ rotations: [LiveActivityScheduleBuilder.Rotation]) {
+        liveActivityRefreshTask?.cancel()
+
+        guard let next = rotations
+            .filter({ $0.switchAt > Date() })
+            .min(by: { $0.switchAt < $1.switchAt })
+        else { return }
+
+        liveActivityRefreshTask = Task { [weak self] in
+            let delay = next.switchAt.timeIntervalSinceNow
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+            guard !Task.isCancelled else { return }
+            await self?.handleLocalRotation(next)
+        }
+
+        print("[LiveActivity] Local rotation scheduled at \(next.switchAt.formatted()) (\(next.reason))")
+    }
+
+    private func handleLocalRotation(_ rotation: LiveActivityScheduleBuilder.Rotation) async {
+        print("[LiveActivity] Local rotation fired — \(rotation.reason)")
+        if rotation.shouldEndActivity {
+            await endLiveActivityIfNeeded()
+            liveActivityRefreshTask?.cancel()
+            liveActivityRefreshTask = nil
+            return
+        }
+        await startOrUpdateLiveActivity()
     }
 
     private func endLiveActivityIfNeeded() async {
@@ -709,73 +847,50 @@ extension TimelineViewModel {
         liveActivityRefreshTask = nil
 
         let activities = Activity<MAMONAKULiveActivityAttributes>.activities
-        for liveActivity in activities where liveActivity.attributes.name.hasPrefix(liveActivityNamePrefix) {
+        for liveActivity in activities where isManagedLiveActivity(liveActivity) {
             await liveActivity.end(dismissalPolicy: .immediate)
         }
     }
 
-    private func liveActivityName(for id: UUID) -> String {
-        "\(liveActivityNamePrefix)\(id.uuidString)"
+    private func isManagedLiveActivity(_ activity: Activity<MAMONAKULiveActivityAttributes>) -> Bool {
+        activity.attributes.name == liveActivityStackName
+            || activity.attributes.name.hasPrefix(liveActivityNamePrefix)
     }
 
-    // 今日の日付で現在時刻より後の最短の予定順に並び替えて返却
-    private func liveActivityCandidates(after now: Date) -> [TimelineItem] {
-        let calendar = Calendar.current
-        let nowSeconds = secondsSinceMidnight(date: now)
-        let todayScheduledItems: [TimelineItem] = items
-            .filter { item in
-                guard let dropDate = item.dropDate, let startMinutes = item.startMinutes else { return false }
-                return calendar.isDateInToday(dropDate)
-            }
-            .sorted { ($0.startMinutes ?? 0) < ($1.startMinutes ?? 0) }
-        return todayScheduledItems.filter { ($0.startMinutes ?? 0) * 60 > nowSeconds }
-    }
-
-    private func clearExistingTimelineActivities() async {
+    private func clearLegacyTimelineActivities() async {
         let existingActivities = Activity<MAMONAKULiveActivityAttributes>.activities
         for liveActivity in existingActivities where liveActivity.attributes.name.hasPrefix(liveActivityNamePrefix) {
             await liveActivity.end(dismissalPolicy: .immediate)
         }
     }
 
-    // LiveActivityへリクエスト
-    private func requestLiveActivity(
-        for item: TimelineItem,
-        at index: Int,
-        startOfToday: Date
-    ) async {
-        let name = liveActivityName(for: item.id)
-        let attributes = MAMONAKULiveActivityAttributes(name: name)
-        let startDate = liveActivityStartDate(for: item, startOfToday: startOfToday)
-        let bufferMinutes = effectiveBufferMinutes(for: item)
-        let task = ActivityTaskItem(
-            nextTitle: item.title,
-            nextStartDate: startDate,
-            countdownStartDate: Date(),
-            remainingTimeShort: startDate.map { Self.shortCountdownString(to: $0) } ?? "--:--",
-            bufferMinutes: bufferMinutes
-        )
-        let state = MAMONAKULiveActivityAttributes.ContentState(schedule: [task])
-        let relevanceScore = max(0.01, 1.0 - (Double(index) * 0.05))
-        let content = ActivityContent(state: state, staleDate: nil, relevanceScore: relevanceScore)
-        let dismissAfter10Seconds = (startDate ?? Date()).addingTimeInterval(10)
+    private func upsertStackLiveActivity(schedule: [ActivityTaskItem], staleDate: Date?) async {
+        let attributes = MAMONAKULiveActivityAttributes(name: liveActivityStackName)
+        let state = MAMONAKULiveActivityAttributes.ContentState(schedule: schedule)
+        let content = ActivityContent(state: state, staleDate: staleDate, relevanceScore: 1.0)
 
-        print("startOrUpdateLiveActivityCreate")
+        if let existing = Activity<MAMONAKULiveActivityAttributes>.activities.first(where: {
+            $0.attributes.name == liveActivityStackName
+        }) {
+            await existing.update(content)
+            print("[LiveActivity] Local update — schedule: \(schedule.map(\.nextTitle).joined(separator: " → "))")
+            LiveActivityPushService.shared.observeUpdateToken(for: existing)
+            return
+        }
+
+        await clearLegacyTimelineActivities()
+
         do {
             let created = try Activity.request(
                 attributes: attributes,
                 content: content,
-                pushType: nil
+                pushType: .token
             )
-            await created.end(dismissalPolicy: .after(dismissAfter10Seconds))
+            print("[LiveActivity] Created — schedule: \(schedule.map(\.nextTitle).joined(separator: " → "))")
+            LiveActivityPushService.shared.observeUpdateToken(for: created)
         } catch {
-            print("Live Activity creation failed: \(error.localizedDescription)")
+            print("[LiveActivity] Creation failed: \(error.localizedDescription)")
         }
-    }
-
-    private func liveActivityStartDate(for item: TimelineItem, startOfToday: Date) -> Date? {
-        guard let startMinutes = item.startMinutes else { return nil }
-        return Calendar.current.date(byAdding: .minute, value: startMinutes, to: startOfToday)
     }
 }
 

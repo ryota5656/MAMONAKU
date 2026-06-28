@@ -15,6 +15,10 @@ final class TimelineStartNotificationScheduler {
         appGroupDefaults?.object(forKey: AppGroup.startNotificationEnabledKey) as? Bool ?? true
     }
 
+    private var isPlusSubscriber: Bool {
+        appGroupDefaults?.bool(forKey: SubscriptionManager.subscriptionStateUserDefaultsKey) ?? false
+    }
+
     func reschedule(items: [TimelineItem]) {
         guard isStartNotificationEnabled else {
             cancel()
@@ -75,7 +79,11 @@ final class TimelineStartNotificationScheduler {
             }
             .sorted { $0.startDate < $1.startDate }
 
-        for (item, startDate) in scheduledItems.prefix(maximumScheduledNotifications) {
+        let itemsToSchedule = isPlusSubscriber
+            ? scheduledItems
+            : Array(scheduledItems.prefix(1))
+
+        for (item, startDate) in itemsToSchedule.prefix(maximumScheduledNotifications) {
             let content = UNMutableNotificationContent()
             content.title = "予定の開始時間です"
             content.body = "「\(item.title)」を開始しましょう"

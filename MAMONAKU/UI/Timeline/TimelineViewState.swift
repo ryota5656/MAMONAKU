@@ -17,6 +17,7 @@ struct TimelineViewState: Equatable {
     var isDeleteButtonTargeted: Bool = false
     var isReturnToStockTargeted: Bool = false
     var isLiveActivityRefreshing: Bool = false
+    var isLiveActivitySyncPending: Bool = false
     var tutorialStep: TimelineTutorialStep? = nil
     var tutorialPulse: Bool = false
 }
@@ -40,7 +41,7 @@ enum TimelineTutorialStep: Equatable {
         case .explainLongPress:
             return "タイムライン上を長押しすると、その位置に新しいアイテムをすぐ置けます。"
         case .explainLiveActivityFromPlus:
-            return "プラスボタンを押しながら上にスライドすると、ロック画面にカウントダウンが表示されるようになります。"
+            return "編集が終わったら、＋を長押しして上にスライドするとロック画面の予定を更新できます。アプリを閉じると自動で反映されます。"
         case .explainSettingsAndSubscription:
             return "最後に日付の左側にある設定アイコンを確認しましょう。ここからテーマ変更やサブスク特典を確認でき、加入いただけると複数の予定を見やすく表示できます。"
         }

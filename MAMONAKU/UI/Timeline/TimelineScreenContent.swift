@@ -16,6 +16,7 @@ struct TimelineScreenContent: View {
             whiteSheetSection
         }
         .overlay(alignment: .top) { tutorialTopOverlay }
+        .overlay(alignment: .top) { liveActivityPendingBanner }
         .overlay { liveActivityLoadingOverlay }
         .overlay(alignment: .bottomLeading) { leftBottomOverlay }
         .overlay(alignment: .bottomTrailing) { rightBottomOverlay }
@@ -63,6 +64,27 @@ struct TimelineScreenContent: View {
     }
 
     @ViewBuilder
+    private var liveActivityPendingBanner: some View {
+        if state.isLiveActivitySyncPending, state.tutorialStep == nil {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                Text("ロック画面の予定が未反映です。＋を長押し→上にスライドで更新")
+                    .font(.caption2.weight(.semibold))
+                    .multilineTextAlignment(.leading)
+            }
+            .foregroundStyle(AppColors.onAccent(palette: themeManager.theme, environmentScheme: colorScheme))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(AppColors.accent(palette: themeManager.theme, environmentScheme: colorScheme))
+            )
+            .padding(.top, 8)
+            .padding(.horizontal, 16)
+        }
+    }
+
+    @ViewBuilder
     private var liveActivityLoadingOverlay: some View {
         if state.isLiveActivityRefreshing {
             ZStack {
@@ -70,7 +92,7 @@ struct TimelineScreenContent: View {
                     .ignoresSafeArea()
                 VStack(spacing: 10) {
                     ProgressView()
-                    Text("Live Activityを作成中…")
+                    Text("Live Activityを更新中…")
                         .font(.footnote.weight(.semibold))
                 }
                 .padding(.horizontal, 18)
@@ -184,6 +206,14 @@ struct TimelineScreenContent: View {
                 .shadow(color: Color.primary.opacity(0.2), radius: 8, x: 0, y: 4)
         }
         .frame(width: 35, height: 35)
+        .overlay(alignment: .topTrailing) {
+            if state.isLiveActivitySyncPending, state.tutorialStep == nil {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 9, height: 9)
+                    .offset(x: 2, y: -2)
+            }
+        }
         .overlay {
             if state.tutorialStep == .openTaskList || state.tutorialStep == .explainLiveActivityFromPlus {
                 Circle()

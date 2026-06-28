@@ -6,7 +6,6 @@
 //
 import Foundation
 import EventKit
-import RealmSwift
 
 protocol TimelineRepositoryProtocol: AnyObject {
     func fetchItems() -> [TimelineItem]
@@ -26,7 +25,7 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     private let subscriptionStateKey = "subscription_is_subscribed"
     private let appGroupID = "group.sairyo.MAMONAKU"
     private let userDefaults: UserDefaults
-    private let realmConfig: Realm.Configuration
+    private let realmStore: TimelineRealmStore
     private let eventStore = EKEventStore()
     private let calendarSyncQueue = DispatchQueue(label: "MAMONAKU.CalendarSync")
     private var calendarObserver: NSObjectProtocol?
@@ -35,38 +34,13 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     private var userDefaultsObserver: NSObjectProtocol?
     private var isCalendarSyncActive = false
 
-    init(userDefaults: UserDefaults? = nil) {
+    init(userDefaults: UserDefaults? = nil, realmStore: TimelineRealmStore = TimelineRealmStore()) {
         if let userDefaults {
             self.userDefaults = userDefaults
         } else {
             self.userDefaults = UserDefaults(suiteName: appGroupID) ?? .standard
         }
-
-        let realmURL = Self.realmFileURL(appGroupID: appGroupID)
-        if let realmURL {
-            print("Realm file URL: \(realmURL)")
-        } else {
-            print("Realm file URL: nil (using default Realm configuration)")
-        }
-        let config = Realm.Configuration(
-            fileURL: realmURL,
-            schemaVersion: 5,
-            migrationBlock: { _, oldSchemaVersion in
-                if oldSchemaVersion < 2 {
-                    // Automatic migration is sufficient for added properties.
-                }
-                if oldSchemaVersion < 3 {
-                    // isCompleted added; default false is applied by Realm.
-                }
-                if oldSchemaVersion < 4 {
-                    // priority added; default 1 (medium) is applied by Realm.
-                }
-                if oldSchemaVersion < 5 {
-                    // isAllDay added; default false is applied by Realm.
-                }
-            }
-        )
-        self.realmConfig = config
+        self.realmStore = realmStore
 
         migrateUserDefaultsIfNeeded()
         startCalendarSyncStateObservation()
@@ -87,36 +61,12 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     }
 
     func fetchItems() -> [TimelineItem] {
-        let realm = realmInstance()
-        return Array(realm.objects(RealmTimelineItem.self).sorted(byKeyPath: "sortIndex"))
-            .map { $0.toTimelineItem() }
+        realmStore.fetchItems()
     }
 
     func saveItems(_ items: [TimelineItem]) {
-        let realm = realmInstance()
-        let existing = realm.objects(RealmTimelineItem.self)
-        let existingEventMap = Dictionary<String, String>(uniqueKeysWithValues: existing.compactMap { item in
-            guard let eventIdentifier = item.eventIdentifier else { return nil }
-            return (item.id, eventIdentifier)
-        })
-        let newIDs = Set(items.map { $0.id.uuidString })
-        let removedEventIdentifiers = existing
-            .filter { !newIDs.contains($0.id) }
-            .compactMap { $0.eventIdentifier }
-
-        do {
-            try realm.write {
-                realm.delete(realm.objects(RealmTimelineItem.self))
-                for (index, item) in items.enumerated() {
-                    let eventIdentifier = existingEventMap[item.id.uuidString]
-                    realm.add(RealmTimelineItem(item: item, sortIndex: index, eventIdentifier: eventIdentifier))
-                }
-            }
-        } catch {
-            print("😭保存に失敗しました")
-        }
-
-        deleteEvents(identifiers: Array(removedEventIdentifiers))
+        let removedEventIdentifiers = realmStore.replaceAll(with: items)
+        deleteEvents(identifiers: removedEventIdentifiers)
         syncCalendarFromRealm()
         persistItemsToUserDefaults(items)
         persistNextItemSummary(fetchNextItemSummary(referenceDate: Date()))
@@ -145,22 +95,10 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     }
 
     func deleteItemAndEvent(id: UUID) {
-        let realm = realmInstance()
-        let idString = id.uuidString
-        var eventIdentifier: String?
+        let result = realmStore.deleteItem(id: id)
+        guard result.success else { return }
 
-        do {
-            try realm.write {
-                if let object = realm.object(ofType: RealmTimelineItem.self, forPrimaryKey: idString) {
-                    eventIdentifier = object.eventIdentifier
-                    realm.delete(object)
-                }
-            }
-        } catch {
-            return
-        }
-
-        if let eventIdentifier {
+        if let eventIdentifier = result.eventIdentifier {
             calendarSyncQueue.async { [weak self] in
                 self?.deleteEvents(identifiers: [eventIdentifier])
             }
@@ -179,21 +117,11 @@ final class TimelineRepository: TimelineRepositoryProtocol {
     }
 
     func fetchNextItemSummary(referenceDate: Date = Date()) -> TimelineNextItemSummary? {
-        let realm = realmInstance()
-        let items = realm.objects(RealmTimelineItem.self)
-        return nextItemSummary(after: referenceDate, items: items)
-    }
-
-    private static func realmFileURL(appGroupID: String) -> URL? {
-        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
-            return nil
-        }
-        return containerURL.appendingPathComponent("MAMONAKU.realm")
+        nextItemSummary(after: referenceDate, items: fetchItems())
     }
 
     private func migrateUserDefaultsIfNeeded() {
-        let realm = realmInstance()
-        guard realm.objects(RealmTimelineItem.self).isEmpty else { return }
+        guard realmStore.isEmpty() else { return }
         guard let data = userDefaults.data(forKey: storageKey) else { return }
         do {
             let decoder = JSONDecoder()
@@ -346,52 +274,18 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         let window = calendarSyncWindow()
         let predicate = eventStore.predicateForEvents(withStart: window.start, end: window.end, calendars: [calendar])
         let events = eventStore.events(matching: predicate)
-
-        let realm = realmInstance()
-        let existing = realm.objects(RealmTimelineItem.self)
-        var existingMap: [String: RealmTimelineItem] = [:]
-        for item in existing {
-            guard let eventIdentifier = item.eventIdentifier else { continue }
-            existingMap[eventIdentifier] = item
+        let imports = events.compactMap { event -> CalendarEventImport? in
+            guard let eventIdentifier = event.eventIdentifier else { return nil }
+            return CalendarEventImport(
+                eventIdentifier: eventIdentifier,
+                title: event.title,
+                startDate: event.startDate,
+                endDate: event.endDate,
+                isAllDay: event.isAllDay
+            )
         }
-        let eventIDs = Set(events.map { $0.eventIdentifier })
-        let maxSortIndex = existing.map { $0.sortIndex }.max() ?? -1
-        var nextSortIndex = maxSortIndex + 1
 
-        do {
-            let itemsToDelete = existing.filter { item in
-                guard let eventIdentifier = item.eventIdentifier else { return false }
-                return !eventIDs.contains(eventIdentifier) && self.shouldDeleteMissingCalendarEvent(item, in: window)
-            }
-
-            try realm.write {
-                for item in itemsToDelete {
-                    realm.delete(item)
-                }
-
-                for event in events {
-                    if let existingItem = existingMap[event.eventIdentifier] {
-                        apply(event: event, to: existingItem)
-                    } else {
-                        let newItem = RealmTimelineItem(
-                            item: TimelineItem(
-                                title: event.title,
-                                durationMinutes: max(1, Int(event.endDate.timeIntervalSince(event.startDate) / 60)),
-                                startMinutes: event.isAllDay ? nil : minutesSinceMidnight(date: event.startDate),
-                                dropDate: Calendar.current.startOfDay(for: event.startDate),
-                                isAllDay: event.isAllDay
-                            ),
-                            sortIndex: nextSortIndex,
-                            eventIdentifier: event.eventIdentifier
-                        )
-                        nextSortIndex += 1
-                        realm.add(newItem)
-                    }
-                }
-            }
-        } catch {
-            return
-        }
+        realmStore.importCalendarEvents(imports, in: window)
         let items = fetchItems()
         persistItemsToUserDefaults(items)
         persistNextItemSummary(fetchNextItemSummary(referenceDate: Date()))
@@ -403,69 +297,60 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         guard hasFullCalendarAccess(status) else { return }
         guard let calendar = eventStore.defaultCalendarForNewEvents else { return }
 
-        let realm = realmInstance()
-        let items = realm.objects(RealmTimelineItem.self).sorted(byKeyPath: "sortIndex")
-        var updates: [(RealmTimelineItem, String?)] = []
+        let records = realmStore.fetchStoredRecordsSorted()
+        var updates: [(id: String, eventIdentifier: String?)] = []
 
-        for item in items {
-            guard let dropDate = item.dropDate else {
-                if let eventIdentifier = item.eventIdentifier,
+        for record in records {
+            guard let dropDate = record.dropDate else {
+                if let eventIdentifier = record.eventIdentifier,
                    let event = eventStore.event(withIdentifier: eventIdentifier) {
                     try? eventStore.remove(event, span: .thisEvent)
                 }
-                updates.append((item, nil))
+                updates.append((record.id, nil))
                 continue
             }
 
             let startDate: Date
             let endDate: Date
-            if item.isAllDay {
+            if record.isAllDay {
                 startDate = dropDate
                 endDate = Calendar.current.date(byAdding: .day, value: 1, to: dropDate) ?? dropDate.addingTimeInterval(24 * 60 * 60)
-            } else if let startMinutes = item.startMinutes {
+            } else if let startMinutes = record.startMinutes {
                 startDate = Calendar.current.date(byAdding: .minute, value: startMinutes, to: dropDate) ?? dropDate
-                endDate = startDate.addingTimeInterval(TimeInterval(item.durationMinutes * 60))
+                endDate = startDate.addingTimeInterval(TimeInterval(record.durationMinutes * 60))
             } else {
-                if let eventIdentifier = item.eventIdentifier,
+                if let eventIdentifier = record.eventIdentifier,
                    let event = eventStore.event(withIdentifier: eventIdentifier) {
                     try? eventStore.remove(event, span: .thisEvent)
                 }
-                updates.append((item, nil))
+                updates.append((record.id, nil))
                 continue
             }
 
             let event: EKEvent
             let shouldSaveEvent: Bool
-            if let eventIdentifier = item.eventIdentifier,
+            if let eventIdentifier = record.eventIdentifier,
                let existing = eventStore.event(withIdentifier: eventIdentifier) {
                 event = existing
-                shouldSaveEvent = eventNeedsSave(event, title: item.title, isAllDay: item.isAllDay, startDate: startDate, endDate: endDate)
+                shouldSaveEvent = eventNeedsSave(event, title: record.title, isAllDay: record.isAllDay, startDate: startDate, endDate: endDate)
             } else {
                 event = EKEvent(eventStore: eventStore)
                 event.calendar = calendar
                 shouldSaveEvent = true
             }
 
-            event.title = item.title
-            event.isAllDay = item.isAllDay
+            event.title = record.title
+            event.isAllDay = record.isAllDay
             event.startDate = startDate
             event.endDate = endDate
 
             if shouldSaveEvent {
                 try? eventStore.save(event, span: .thisEvent)
             }
-            updates.append((item, event.eventIdentifier))
+            updates.append((record.id, event.eventIdentifier))
         }
 
-        do {
-            try realm.write {
-                for (item, identifier) in updates {
-                    item.eventIdentifier = identifier
-                }
-            }
-        } catch {
-            return
-        }
+        realmStore.updateEventIdentifiers(updates)
     }
 
     private func deleteEvents(identifiers: [String]) {
@@ -477,16 +362,6 @@ final class TimelineRepository: TimelineRepositoryProtocol {
                 try? eventStore.remove(event, span: .thisEvent)
             }
         }
-    }
-
-    private func apply(event: EKEvent, to item: RealmTimelineItem) {
-        let startMinutes = event.isAllDay ? nil : minutesSinceMidnight(date: event.startDate)
-        item.title = event.title
-        item.startMinutes = startMinutes
-        item.dropDate = Calendar.current.startOfDay(for: event.startDate)
-        item.durationMinutes = max(1, Int(event.endDate.timeIntervalSince(event.startDate) / 60))
-        item.isAllDay = event.isAllDay
-        item.eventIdentifier = event.eventIdentifier
     }
 
     private func hasFullCalendarAccess(_ status: EKAuthorizationStatus) -> Bool {
@@ -507,11 +382,6 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         return (start, end)
     }
 
-    private func shouldDeleteMissingCalendarEvent(_ item: RealmTimelineItem, in window: (start: Date, end: Date)) -> Bool {
-        guard let dropDate = item.dropDate else { return true }
-        return dropDate >= window.start && dropDate < window.end
-    }
-
     private func eventNeedsSave(
         _ event: EKEvent,
         title: String,
@@ -525,13 +395,6 @@ final class TimelineRepository: TimelineRepositoryProtocol {
             || abs(event.endDate.timeIntervalSince(endDate)) >= 1
     }
 
-    private func minutesSinceMidnight(date: Date) -> Int {
-        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
-        let h = comps.hour ?? 0
-        let m = comps.minute ?? 0
-        return (h * 60) + m
-    }
-
     /// 標準カレンダー同期はサブスクリプション加入時のみ有効
     private var isCalendarSyncEnabled: Bool {
         let syncPreferred = userDefaults.object(forKey: calendarSyncEnabledKey) == nil
@@ -541,14 +404,14 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         return syncPreferred && subscribed
     }
 
-    private func nextItemSummary(after date: Date, items: Results<RealmTimelineItem>) -> TimelineNextItemSummary? {
+    private func nextItemSummary(after date: Date, items: [TimelineItem]) -> TimelineNextItemSummary? {
         let nowSeconds = secondsSinceMidnight(date: date)
         let startMinutes = Int(ceil(Double(nowSeconds) / 60.0))
         let todayItems = items.filter { item in
             guard let dropDate = item.dropDate else { return false }
             return Calendar.current.isDateInToday(dropDate)
         }
-        let candidates: [(RealmTimelineItem, Int)] = todayItems.compactMap { item in
+        let candidates: [(TimelineItem, Int)] = todayItems.compactMap { item in
             guard let minutes = item.startMinutes else { return nil }
             return (item, minutes)
         }
@@ -573,53 +436,9 @@ final class TimelineRepository: TimelineRepositoryProtocol {
         let s = comps.second ?? 0
         return (h * 3600) + (m * 60) + s
     }
-
-    private func realmInstance() -> Realm {
-        (try? Realm(configuration: realmConfig)) ?? (try! Realm())
-    }
 }
 
 struct TimelineNextItemSummary: Codable, Equatable {
     let title: String
     let startDate: Date?
-}
-
-final class RealmTimelineItem: Object {
-    @Persisted(primaryKey: true) var id: String
-    @Persisted var title: String = ""
-    @Persisted var durationMinutes: Int = 0
-    @Persisted var startMinutes: Int?
-    @Persisted var dropDate: Date?
-    @Persisted var sortIndex: Int = 0
-    @Persisted var eventIdentifier: String?
-    @Persisted var isCompleted: Bool = false
-    @Persisted var priority: Int = 1
-    @Persisted var isAllDay: Bool = false
-
-    convenience init(item: TimelineItem, sortIndex: Int, eventIdentifier: String? = nil) {
-        self.init()
-        self.id = item.id.uuidString
-        self.title = item.title
-        self.durationMinutes = item.durationMinutes
-        self.startMinutes = item.startMinutes
-        self.dropDate = item.dropDate
-        self.sortIndex = sortIndex
-        self.eventIdentifier = eventIdentifier
-        self.isCompleted = item.isCompleted
-        self.priority = item.priority.rawValue
-        self.isAllDay = item.isAllDay
-    }
-
-    func toTimelineItem() -> TimelineItem {
-        TimelineItem(
-            id: UUID(uuidString: id) ?? UUID(),
-            title: title,
-            durationMinutes: durationMinutes,
-            startMinutes: startMinutes,
-            dropDate: dropDate,
-            isCompleted: isCompleted,
-            priority: TaskPriority(rawValue: priority) ?? .medium,
-            isAllDay: isAllDay
-        )
-    }
 }
