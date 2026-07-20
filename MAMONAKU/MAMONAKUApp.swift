@@ -80,7 +80,8 @@ struct MAMONAKUApp: App {
                         }
                         LiveActivitySyncCoordinator.requestForegroundRefresh()
                     case .background:
-                        LiveActivitySyncCoordinator.requestCommit()
+                        // バックグラウンド遷移では同期しない（不安定化回避。完了/更新ボタンで同期）
+                        break
                     default:
                         break
                     }

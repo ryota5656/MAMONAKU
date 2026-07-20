@@ -259,6 +259,11 @@ final class LiveActivityPushService {
         defaults?.set(created, forKey: key)
         return created
     }
+
+    /// App Group に永続化された deviceId（無ければ生成）
+    func resolvedDeviceID() -> String {
+        Self.deviceID(defaults: appGroupDefaults)
+    }
 }
 
 private struct PersistedRotation: Codable {

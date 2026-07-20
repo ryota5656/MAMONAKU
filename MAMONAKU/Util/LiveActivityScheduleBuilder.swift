@@ -1,8 +1,10 @@
 import Foundation
 
-/// 今日の予定から Live Activity 用スロット（最大3件）とローテーション予約を組み立てる。
+/// 今日の予定から Live Activity 用スロットとローテーション予約を組み立てる。
+/// - free: 表示は最大1件。ローテーションで次の1件へ進める
+/// - plus: 表示は最大3件スタック
 enum LiveActivityScheduleBuilder {
-    /// 無料: 直近1件のみ。PLUS: 当日の全予定を対象に最大3件スタック表示。
+    /// 無料: 表示1件。PLUS: 最大3件スタック表示。
     enum PlanScope {
         case free
         case plus
@@ -34,9 +36,16 @@ enum LiveActivityScheduleBuilder {
         planScope: PlanScope = .plus
     ) -> [ScheduledEntry] {
         let calendar = Calendar.current
-        let all = items
+        // プランに依らず当日の全配置予定を返す。
+        // 表示件数の制限は currentWindow / maxVisibleSlots 側で行う
+        //（無料も自動ローテーションで「次の1件」へ進めるため）。
+        _ = planScope
+        return items
             .filter { item in
-                guard let dropDate = item.dropDate, item.startMinutes != nil else { return false }
+                guard !item.isAllDay,
+                      let dropDate = item.dropDate,
+                      item.startMinutes != nil
+                else { return false }
                 return calendar.isDateInToday(dropDate)
             }
             .sorted { ($0.startMinutes ?? 0) < ($1.startMinutes ?? 0) }
@@ -49,14 +58,6 @@ enum LiveActivityScheduleBuilder {
                 let endDate = startDate.addingTimeInterval(TimeInterval(item.durationMinutes * 60))
                 return ScheduledEntry(item: item, startDate: startDate, endDate: endDate)
             }
-
-        switch planScope {
-        case .plus:
-            return all
-        case .free:
-            guard let next = all.first(where: { $0.startDate > referenceDate }) else { return [] }
-            return [next]
-        }
     }
 
     /// まだ開始していない最初の予定から、プランに応じた件数のウィンドウを返す。

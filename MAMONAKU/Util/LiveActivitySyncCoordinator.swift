@@ -22,6 +22,7 @@ enum LiveActivitySyncCoordinator {
     }
 
     static func requestCommit() {
+        // 互換のため残すが、バックグラウンドでは呼ばない（完了/更新ボタンで同期）
         NotificationCenter.default.post(name: commitNotification, object: nil)
     }
 

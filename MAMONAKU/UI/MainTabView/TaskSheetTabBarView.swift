@@ -54,10 +54,12 @@ struct TaskSheetTabBarView: View {
     }
 
     private func refreshLiveActivityButton(primary: Color, onAccent: Color) -> some View {
-        Button(action: onRefreshLiveActivity) {
+        let canRefresh = isLiveActivitySyncPending && !isLiveActivityRefreshing
+
+        return Button(action: onRefreshLiveActivity) {
             ZStack {
                 Circle()
-                    .fill(primary)
+                    .fill(primary.opacity(canRefresh ? 1 : 0.35))
                 if isLiveActivityRefreshing {
                     ProgressView()
                         .tint(onAccent)
@@ -65,11 +67,11 @@ struct TaskSheetTabBarView: View {
                 } else {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(onAccent)
+                        .foregroundStyle(onAccent.opacity(canRefresh ? 1 : 0.55))
                 }
             }
             .frame(width: 52, height: 52)
-            .shadow(color: Color.primary.opacity(0.2), radius: 6, x: 0, y: 2)
+            .shadow(color: Color.primary.opacity(canRefresh ? 0.2 : 0.08), radius: 6, x: 0, y: 2)
             .overlay(alignment: .topTrailing) {
                 if isLiveActivitySyncPending, !isLiveActivityRefreshing {
                     Circle()
@@ -80,8 +82,9 @@ struct TaskSheetTabBarView: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(isLiveActivityRefreshing)
+        .disabled(!canRefresh)
         .accessibilityLabel("ロック画面を更新")
+        .accessibilityHint(canRefresh ? "未反映の予定をロック画面に送ります" : "反映待ちの変更はありません")
     }
 
     private func tabButton(tab: TaskSheetTab, secondary: Color, accent: Color) -> some View {

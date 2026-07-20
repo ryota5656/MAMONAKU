@@ -555,8 +555,11 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         appGroupDefaults?.bool(forKey: SubscriptionManager.subscriptionStateUserDefaultsKey) ?? false
     }
 
+    /// 無料: 1件。PLUS かつ複数表示ON: 最大3件。PLUS でも複数表示OFFなら1件。
     private var liveActivityPlanScope: LiveActivityScheduleBuilder.PlanScope {
-        isPlusSubscriber ? .plus : .free
+        guard isPlusSubscriber else { return .free }
+        let multipleEnabled = appGroupDefaults?.object(forKey: AppGroup.liveActivityMultipleEnabledKey) as? Bool ?? true
+        return multipleEnabled ? .plus : .free
     }
 
     private func effectiveBufferMinutes(for item: TimelineItem) -> Int? {
@@ -730,10 +733,10 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         guard isLiveActivityEnabled else { return }
         LiveActivitySyncCoordinator.markPending()
         state.isLiveActivitySyncPending = true
-        print("[LiveActivity] Sync pending — commit on background or manual refresh")
+        print("[LiveActivity] Sync pending — commit on complete or manual refresh")
     }
 
-    /// 未反映の変更があれば Live Activity と Cloud Tasks を更新する。
+    /// 編集完了 / 手動更新時: ローカル LA 更新 + Firestore 予定同期（Functions が Tasks 再登録）
     func commitPendingLiveActivitySync(force: Bool = false) async {
         guard force || LiveActivitySyncCoordinator.isPending else { return }
         guard isLiveActivityEnabled else {
@@ -741,10 +744,26 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
             state.isLiveActivitySyncPending = false
             return
         }
-        print("[LiveActivity] Committing pending sync (force=\(force))")
+        print("[LiveActivity] Committing sync (force=\(force))")
         await startOrUpdateLiveActivity()
-        LiveActivitySyncCoordinator.clearPending()
-        state.isLiveActivitySyncPending = false
+        do {
+            try await TimelineFirestoreSyncService.shared.syncTodaySchedules(
+                items: items,
+                maxVisibleSlots: liveActivityPlanScope.maxVisibleSlots
+            )
+            LiveActivitySyncCoordinator.clearPending()
+            state.isLiveActivitySyncPending = false
+        } catch {
+            LiveActivitySyncCoordinator.markPending()
+            state.isLiveActivitySyncPending = true
+            print("[LiveActivity] Firestore sync failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// 編集完了ボタン用: 編集モード解除後にクラウド同期する。
+    func completeEditingAndSyncLiveActivity() async {
+        exitEditMode()
+        await commitPendingLiveActivitySync(force: true)
     }
 }
 
@@ -755,7 +774,6 @@ extension TimelineViewModel {
     func startOrUpdateLiveActivity() async {
         guard isLiveActivityEnabled else {
             await endLiveActivityIfNeeded()
-            await LiveActivityPushService.shared.syncSchedule(rotations: [])
             return
         }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
@@ -775,7 +793,6 @@ extension TimelineViewModel {
 
         guard !window.isEmpty else {
             await endLiveActivityIfNeeded()
-            await LiveActivityPushService.shared.syncSchedule(rotations: [])
             return
         }
 
@@ -801,7 +818,7 @@ extension TimelineViewModel {
         let staleDate = entries[startIndex].startDate
         await upsertStackLiveActivity(schedule: schedule, staleDate: staleDate)
         scheduleNextLocalRotation(rotations)
-        await LiveActivityPushService.shared.syncSchedule(rotations: rotations)
+        // クラウド Tasks は Firestore 予定同期 → Functions 監視で登録する（rotations POST はしない）
     }
 
     /// プライマリのカウントダウンが 0:00 を過ぎていたら、次の予定へ切り替える。

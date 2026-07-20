@@ -70,7 +70,7 @@ struct AppSectionView: View {
 
             if isBufferSettingEnabled {
                 Toggle(isOn: multipleLiveActivityEnabled) {
-                    Label("複数Live Activity表示", systemImage: "rectangle.3.group.fill")
+                    Label("スタック表示（最大3件）", systemImage: "rectangle.3.group.fill")
                         .foregroundStyle(primary)
                 }
 
@@ -95,7 +95,7 @@ struct AppSectionView: View {
             } else {
                 Button(action: onTapLocked) {
                     HStack(spacing: 12) {
-                        Label("複数Live Activity表示", systemImage: "rectangle.3.group.fill")
+                        Label("スタック表示（最大3件）", systemImage: "rectangle.3.group.fill")
                             .foregroundStyle(primary)
                         Spacer()
                         Text("サブスク限定")

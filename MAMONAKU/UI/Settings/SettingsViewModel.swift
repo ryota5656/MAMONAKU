@@ -69,16 +69,15 @@ final class SettingsViewModel: ObservableObject, SettingsDelegate {
         }
     }
 
-    /// Dynamic Island / Live Activity 表示のオン/オフ（加入時のみ保存）
+    /// Dynamic Island / Live Activity 表示のオン/オフ（無料・PLUS どちらも保存可）
     @Published var liveActivityEnabled: Bool = true {
         didSet {
-            guard effectiveIsSubscribed else { return }
             userDefaults?.set(liveActivityEnabled, forKey: AppGroup.liveActivityEnabledKey)
         }
     }
 
-    /// Live Activity 複数表示のオン/オフ（加入時のみ保存）
-    @Published var multipleLiveActivityEnabled: Bool = false {
+    /// Live Activity スタック表示（最大3件）。PLUS のみ保存可。デフォルト ON。
+    @Published var multipleLiveActivityEnabled: Bool = true {
         didSet {
             guard effectiveIsSubscribed else { return }
             userDefaults?.set(multipleLiveActivityEnabled, forKey: AppGroup.liveActivityMultipleEnabledKey)
@@ -232,7 +231,7 @@ final class SettingsViewModel: ObservableObject, SettingsDelegate {
     }
 
     private func loadMultipleLiveActivityEnabled() {
-        let value = userDefaults?.object(forKey: AppGroup.liveActivityMultipleEnabledKey) as? Bool ?? false
+        let value = userDefaults?.object(forKey: AppGroup.liveActivityMultipleEnabledKey) as? Bool ?? true
         if multipleLiveActivityEnabled != value {
             multipleLiveActivityEnabled = value
         }

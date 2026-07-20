@@ -73,7 +73,7 @@ struct MainTabView: View {
     }
 
     private func completeEditing() {
-        timelineViewModel.exitEditMode()
+        Task { await timelineViewModel.completeEditingAndSyncLiveActivity() }
     }
 
     private func refreshLiveActivity() {
