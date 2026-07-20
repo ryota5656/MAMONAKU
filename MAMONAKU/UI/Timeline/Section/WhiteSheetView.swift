@@ -53,15 +53,6 @@ struct WhiteSheetView: View {
                                         timeColumn
                                         singleDayTimelineColumn(date: date)
                                     }
-                                    .background(
-                                        Color.clear
-                                            .contentShape(Rectangle())
-                                            .onTapGesture {
-                                                if viewModel.editMode.isEditing {
-                                                    viewModel.exitEditMode()
-                                                }
-                                            }
-                                    )
                                     .simultaneousGesture(magnificationGesture)
                                 }
                                 .padding(.bottom, 500) //GAD入れても良い

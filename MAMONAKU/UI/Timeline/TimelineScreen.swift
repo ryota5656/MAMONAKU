@@ -17,6 +17,7 @@ struct TimelineScreen: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .ignoresSafeArea(.keyboard)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.state.taskSheetDetent)
         .onPreferenceChange(HeaderHeightKey.self) { value in
             viewModel.state.headerHeight = value

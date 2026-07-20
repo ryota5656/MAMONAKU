@@ -38,8 +38,6 @@ struct TimelineDayColumnView: View {
                 .onTapGesture {
                     if viewModel.pendingPlacement != nil {
                         viewModel.cancelPendingPlacement()
-                    } else if viewModel.editMode.isEditing {
-                        viewModel.exitEditMode()
                     }
                 }
 
@@ -55,14 +53,10 @@ struct TimelineDayColumnView: View {
                     let showTimeRange = itemHeight > showTimeThreshold
                     ScheduleItemView(
                         item: item,
-                        isEditing: viewModel.editingItemID == item.id,
+                        isEditing: viewModel.editMode.isEditing,
                         showTimeRange: showTimeRange,
                         onEnterEdit: {
-                            if viewModel.editMode.isEditing && viewModel.editingItemID == item.id {
-                                viewModel.exitEditMode()
-                            } else {
-                                viewModel.requestEnterEditMode(for: item.id)
-                            }
+                            _ = viewModel.requestEnterEditMode(for: item.id)
                         },
                         onTitleCommit: { title in
                             viewModel.updateItemTitle(id: item.id, title: title)

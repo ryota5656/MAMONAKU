@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 /// ピーク時にタイムライン上へ浮かせて表示する Stock カード（シート外）
+/// タイムライン上のアイテムをここにドロップするとタスクリストへ戻す。
 struct TaskListPeekCardView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeManager: ThemeManager
@@ -18,6 +19,12 @@ struct TaskListPeekCardView: View {
         items.filter { $0.dropDate == nil }
     }
 
+    /// タイムライン上のアイテムをドラッグ中のみドロップを受け取る
+    private var isDraggingPlacedItem: Bool {
+        guard let dragItemID else { return false }
+        return items.contains { $0.id == dragItemID && $0.dropDate != nil }
+    }
+
     var body: some View {
         let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
         let primary = AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
@@ -27,18 +34,24 @@ struct TaskListPeekCardView: View {
         VStack(spacing: 10) {
             Button(action: onExpand) {
                 HStack(spacing: 8) {
-                    Text("Stock")
+                    Text(isSheetDropTargeted ? "タスクリストへ戻す" : "Stock")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(primary)
+                        .foregroundStyle(isSheetDropTargeted ? accent : primary)
                     Spacer()
-                    if !stockTasks.isEmpty {
-                        Text("\(stockTasks.count)件")
-                            .font(.system(size: 13, weight: .medium))
+                    if isSheetDropTargeted {
+                        Image(systemName: "tray.and.arrow.down.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(accent)
+                    } else {
+                        if !stockTasks.isEmpty {
+                            Text("\(stockTasks.count)件")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(secondary)
+                        }
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(secondary)
                     }
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(secondary)
                 }
                 .padding(.top, 4)
                 .padding(.bottom, 4)
@@ -46,16 +59,17 @@ struct TaskListPeekCardView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .allowsHitTesting(!isDraggingPlacedItem)
 
             if stockTasks.isEmpty {
-                Text("タスクがありません")
+                Text(isSheetDropTargeted ? "ここにドロップ" : "タスクがありません")
                     .font(.system(size: 12))
-                    .foregroundStyle(secondary)
+                    .foregroundStyle(isSheetDropTargeted ? accent : secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(stockTasks.prefix(3)) { item in
+                        ForEach(stockTasks.prefix(20)) { item in
                             TaskStockPeekChipView(
                                 item: item,
                                 isDraggingTask: $isDraggingTask,
@@ -64,19 +78,20 @@ struct TaskListPeekCardView: View {
                             )
                         }
 
-                        if stockTasks.count > 3 {
-                            Text("+\(stockTasks.count - 3)")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(secondary)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .strokeBorder(secondary.opacity(0.35), lineWidth: 1)
-                                )
-                        }
+//                        if stockTasks.count > 3 {
+//                            Text("+\(stockTasks.count - 3)")
+//                                .font(.system(size: 13, weight: .semibold))
+//                                .foregroundStyle(secondary)
+//                                .padding(.horizontal, 12)
+//                                .padding(.vertical, 7)
+//                                .background(
+//                                    Capsule(style: .continuous)
+//                                        .strokeBorder(secondary.opacity(0.35), lineWidth: 1)
+//                                )
+//                        }
                     }
                 }
+                .allowsHitTesting(!isDraggingPlacedItem)
             }
         }
         .padding(.horizontal, 16)
@@ -86,19 +101,26 @@ struct TaskListPeekCardView: View {
                 .fill(cardBackground)
                 .shadow(color: Color.black.opacity(0.15), radius: 16, x: 0, y: 6)
         )
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(accent.opacity(isSheetDropTargeted ? 0.14 : 0))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .strokeBorder(accent.opacity(isSheetDropTargeted ? 0.9 : 0), lineWidth: 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(accent.opacity(isSheetDropTargeted ? 0.12 : 0))
+                )
                 .animation(.easeInOut(duration: 0.15), value: isSheetDropTargeted)
-        )
+                .allowsHitTesting(false)
+        }
         .overlay {
             ItemDropTarget(
                 onDrop: { id in
                     isSheetDropTargeted = false
                     isDraggingTask = false
+                    guard items.contains(where: { $0.id == id && $0.dropDate != nil }) else { return }
                     onReturnToStock(id)
                 },
                 onDragEntered: {
+                    guard isDraggingPlacedItem else { return }
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.prepare()
                     generator.impactOccurred()
@@ -106,9 +128,11 @@ struct TaskListPeekCardView: View {
                 },
                 onDragExited: {
                     isSheetDropTargeted = false
-                }
+                },
+                absorbsHits: isDraggingPlacedItem
             )
         }
+        .ignoresSafeArea(.keyboard)
     }
 }
 

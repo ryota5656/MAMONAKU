@@ -9,11 +9,6 @@ struct TaskDragPreview: View {
         let accent = Color.accentColor
         let shadow = colorScheme == .dark ? Color.black.opacity(0.35) : Color.black.opacity(0.15)
         HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(accent)
-                .frame(width: 6)
-                .frame(maxHeight: .infinity)
-
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title)
                     .font(.system(size: 12, weight: .semibold))

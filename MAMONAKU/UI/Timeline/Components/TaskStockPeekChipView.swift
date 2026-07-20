@@ -16,6 +16,9 @@ struct TaskStockPeekChipView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme))
                 .lineLimit(1)
+            Text("\(item.durationMinutes) min")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)

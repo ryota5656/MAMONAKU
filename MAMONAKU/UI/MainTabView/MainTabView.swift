@@ -20,23 +20,20 @@ struct MainTabView: View {
 
     var body: some View {
         tabContent
-            // TaskList
             .background {
                 GeometryReader { geo in
                     Color.clear
                         .preference(key: MainTabBottomSafeAreaInsetKey.self, value: geo.safeAreaInsets.bottom)
                 }
+                .ignoresSafeArea(.keyboard)
             }
             .onPreferenceChange(MainTabBottomSafeAreaInsetKey.self) { bottomSafeAreaInset = $0 }
             .overlay(alignment: .bottom) {
                 taskSheetTabBar
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
-//            .onChange(of: selectedTab) { _, tab in
-//                if tab != .timeline {
-//                    timelineViewModel.state.taskSheetDetent = TaskSheetPresentation.peek
-//                }
-//            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: timelineViewModel.editMode.isEditing)
+            .ignoresSafeArea(.keyboard)
     }
 
     @ViewBuilder
@@ -53,8 +50,10 @@ struct MainTabView: View {
     private var taskSheetTabBar: some View {
         TaskSheetTabBarView(
             selectedTab: selectedTabBinding,
+            isTimelineEditing: timelineViewModel.editMode.isEditing,
             isLiveActivityRefreshing: timelineViewModel.state.isLiveActivityRefreshing,
             isLiveActivitySyncPending: timelineViewModel.state.isLiveActivitySyncPending,
+            onCompleteEditing: completeEditing,
             onRefreshLiveActivity: refreshLiveActivity
         )
         .padding(.horizontal, 16)
@@ -71,6 +70,10 @@ struct MainTabView: View {
             get: { timelineViewModel.state.taskSheetSelectedTab },
             set: { timelineViewModel.state.taskSheetSelectedTab = $0 }
         )
+    }
+
+    private func completeEditing() {
+        timelineViewModel.exitEditMode()
     }
 
     private func refreshLiveActivity() {

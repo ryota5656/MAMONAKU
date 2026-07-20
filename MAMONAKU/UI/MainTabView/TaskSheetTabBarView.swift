@@ -1,12 +1,15 @@
 import SwiftUI
 
-/// 画面下端に固定表示するタブバー（モーダルとは独立）。右端は Live Activity 更新ボタン。
+/// 画面下端に固定表示するタブバー（モーダルとは独立）。
+/// 右端は通常 Live Activity 更新、タイムライン編集中は完了ボタン。
 struct TaskSheetTabBarView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeManager: ThemeManager
     @Binding var selectedTab: TaskSheetTab
+    let isTimelineEditing: Bool
     let isLiveActivityRefreshing: Bool
     let isLiveActivitySyncPending: Bool
+    let onCompleteEditing: () -> Void
     let onRefreshLiveActivity: () -> Void
 
     var body: some View {
@@ -26,34 +29,59 @@ struct TaskSheetTabBarView: View {
             .padding(.horizontal, 6)
             .background(Capsule(style: .continuous).fill(barBackground))
 
-            Button(action: onRefreshLiveActivity) {
-                ZStack {
-                    Circle()
-                        .fill(primary)
-                    if isLiveActivityRefreshing {
-                        ProgressView()
-                            .tint(onAccent)
-                            .scaleEffect(0.85)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(onAccent)
-                    }
-                }
-                .frame(width: 52, height: 52)
-                .shadow(color: Color.primary.opacity(0.2), radius: 6, x: 0, y: 2)
-                .overlay(alignment: .topTrailing) {
-                    if isLiveActivitySyncPending, !isLiveActivityRefreshing {
-                        Circle()
-                            .fill(Color.orange)
-                            .frame(width: 9, height: 9)
-                            .offset(x: 2, y: -2)
-                    }
+            if isTimelineEditing {
+                completeEditingButton(primary: primary, onAccent: onAccent)
+            } else {
+                refreshLiveActivityButton(primary: primary, onAccent: onAccent)
+            }
+        }
+    }
+
+    private func completeEditingButton(primary: Color, onAccent: Color) -> some View {
+        Button(action: onCompleteEditing) {
+            ZStack {
+                Circle()
+                    .fill(primary)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(onAccent)
+            }
+            .frame(width: 52, height: 52)
+            .shadow(color: Color.primary.opacity(0.2), radius: 6, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("編集を完了")
+    }
+
+    private func refreshLiveActivityButton(primary: Color, onAccent: Color) -> some View {
+        Button(action: onRefreshLiveActivity) {
+            ZStack {
+                Circle()
+                    .fill(primary)
+                if isLiveActivityRefreshing {
+                    ProgressView()
+                        .tint(onAccent)
+                        .scaleEffect(0.85)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(onAccent)
                 }
             }
-            .buttonStyle(.plain)
-            .disabled(isLiveActivityRefreshing)
+            .frame(width: 52, height: 52)
+            .shadow(color: Color.primary.opacity(0.2), radius: 6, x: 0, y: 2)
+            .overlay(alignment: .topTrailing) {
+                if isLiveActivitySyncPending, !isLiveActivityRefreshing {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 9, height: 9)
+                        .offset(x: 2, y: -2)
+                }
+            }
         }
+        .buttonStyle(.plain)
+        .disabled(isLiveActivityRefreshing)
+        .accessibilityLabel("ロック画面を更新")
     }
 
     private func tabButton(tab: TaskSheetTab, secondary: Color, accent: Color) -> some View {
@@ -87,12 +115,25 @@ struct TaskSheetTabBarView: View {
 #Preview("TaskSheetTabBarView") {
     @Previewable @State var selectedTab: TaskSheetTab = .timeline
 
-    TaskSheetTabBarView(
-        selectedTab: $selectedTab,
-        isLiveActivityRefreshing: false,
-        isLiveActivitySyncPending: true,
-        onRefreshLiveActivity: {}
-    )
+    VStack(spacing: 24) {
+        TaskSheetTabBarView(
+            selectedTab: $selectedTab,
+            isTimelineEditing: false,
+            isLiveActivityRefreshing: false,
+            isLiveActivitySyncPending: true,
+            onCompleteEditing: {},
+            onRefreshLiveActivity: {}
+        )
+
+        TaskSheetTabBarView(
+            selectedTab: $selectedTab,
+            isTimelineEditing: true,
+            isLiveActivityRefreshing: false,
+            isLiveActivitySyncPending: false,
+            onCompleteEditing: {},
+            onRefreshLiveActivity: {}
+        )
+    }
     .padding()
     .background(Color.black)
     .environmentObject(ThemeManager())
