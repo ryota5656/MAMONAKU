@@ -32,11 +32,11 @@ struct ActivityTaskItem: Codable, Hashable {
 struct MAMONAKULiveActivityLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: MAMONAKULiveActivityAttributes.self) { context in
-            let theme = AppPalette.loadFromAppGroup()
-            StackLiveActivityView(schedule: context.state.schedule, theme: theme)
+            StackLiveActivityView(schedule: context.state.schedule)
+                .activityBackgroundTint(.clear)
+
         } dynamicIsland: { context in
             let primary = context.state.schedule.first
-            let theme = AppPalette.loadFromAppGroup()
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     Text(primary?.nextTitle ?? "完了")
@@ -65,7 +65,6 @@ struct MAMONAKULiveActivityLiveActivity: Widget {
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                 }
             }
-            .keylineTint(AppColors.accent(palette: theme, environmentScheme: .light))
         }
     }
 }
@@ -74,69 +73,35 @@ struct MAMONAKULiveActivityLiveActivity: Widget {
 
 private struct StackLiveActivityView: View {
     let schedule: [ActivityTaskItem]
-    let theme: AppPalette
-    @Environment(\.colorScheme) private var colorScheme
 
     private var primary: ActivityTaskItem? { schedule.first }
     private var stackItems: [ActivityTaskItem] { Array(schedule.dropFirst().prefix(2)) }
 
-    private var displayScheme: ColorScheme {
-        switch theme {
-        case .light, .pop, .sakura:
-            return .light
-        case .dark, .elegant:
-            return .dark
-        case .system:
-            return colorScheme
-        @unknown default:
-            return colorScheme
-        }
-    }
-
     var body: some View {
-        let primaryColor = AppColors.textPrimary(palette: theme, environmentScheme: displayScheme)
-        let secondaryColor = AppColors.textSecondary(palette: theme, environmentScheme: displayScheme)
-        let accent = AppColors.accent(palette: theme, environmentScheme: displayScheme)
-        let background = AppColors.background(palette: theme, environmentScheme: displayScheme)
-
         HStack(alignment: .top, spacing: 12) {
-            primarySection(primary: primary, primaryColor: primaryColor, accent: accent)
+            primarySection(primary: primary)
 
             if !stackItems.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(stackItems.enumerated()), id: \.offset) { _, item in
-                        StackSlotView(item: item, textColor: secondaryColor, accent: accent)
+                        StackSlotView(item: item)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(background)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(primaryColor.opacity(0.12), lineWidth: 1)
-        )
     }
 
     @ViewBuilder
-    private func primarySection(
-        primary: ActivityTaskItem?,
-        primaryColor: Color,
-        accent: Color
-    ) -> some View {
+    private func primarySection(primary: ActivityTaskItem?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if let primary {
                 Text(primary.nextTitle)
                     .font(.headline.weight(.bold))
-                    .foregroundStyle(primaryColor)
                     .lineLimit(2)
 
                 PrimaryCountdownView(item: primary, fontSize: 30, weight: .heavy)
-                    .foregroundStyle(primaryColor.opacity(0.95))
 
                 if let bufferMinutes = primary.bufferMinutes {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -145,7 +110,7 @@ private struct StackLiveActivityView: View {
                             if seconds > 0, seconds <= bufferMinutes * 60, !primary.nextTitle.isEmpty {
                                 Text("まもなく「\(primary.nextTitle)」です。準備をしましょう")
                                     .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(accent)
+                                    .foregroundStyle(.secondary)
                                     .lineLimit(2)
                             }
                         }
@@ -154,40 +119,34 @@ private struct StackLiveActivityView: View {
             } else {
                 Text("NO PLAN")
                     .font(.system(size: 24, weight: .heavy, design: .rounded))
-                    .foregroundStyle(primaryColor.opacity(0.8))
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: stackItems.isEmpty ? .infinity : nil, alignment: .leading)
+        
     }
 }
 
 private struct StackSlotView: View {
     let item: ActivityTaskItem
-    let textColor: Color
-    let accent: Color
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(item.remainingTimeShort)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(accent.opacity(0.9))
+                .foregroundStyle(.secondary)
             Text(item.nextTitle)
                 .font(.caption2)
-                .foregroundStyle(textColor)
                 .lineLimit(2)
             if let bufferMinutes = item.bufferMinutes {
                 Text("バッファ \(bufferMinutes)分")
                     .font(.caption2)
-                    .foregroundStyle(textColor.opacity(0.7))
+                    .foregroundStyle(.tertiary)
             }
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(textColor.opacity(0.06))
-        )
     }
 }
 
@@ -279,6 +238,129 @@ private struct CountdownText: View {
 
 extension MAMONAKULiveActivityAttributes {
     fileprivate static var preview: MAMONAKULiveActivityAttributes {
-        MAMONAKULiveActivityAttributes(name: "World")
+        MAMONAKULiveActivityAttributes(name: "timeline-stack")
     }
+}
+
+extension MAMONAKULiveActivityAttributes.ContentState {
+    fileprivate static func sampleSchedule(now: Date = .now) -> Self {
+        let primaryStart = now.addingTimeInterval(25 * 60)
+        let secondStart = now.addingTimeInterval(90 * 60)
+        let thirdStart = now.addingTimeInterval(150 * 60)
+        return Self(
+            schedule: [
+                ActivityTaskItem(
+                    nextTitle: "ミーティング",
+                    nextStartDate: primaryStart,
+                    nextEndDate: primaryStart.addingTimeInterval(30 * 60),
+                    countdownStartDate: now,
+                    remainingTimeShort: "25分",
+                    bufferMinutes: 10
+                ),
+                ActivityTaskItem(
+                    nextTitle: "ランチ",
+                    nextStartDate: secondStart,
+                    nextEndDate: secondStart.addingTimeInterval(45 * 60),
+                    countdownStartDate: nil,
+                    remainingTimeShort: "1時間30分",
+                    bufferMinutes: 5
+                ),
+                ActivityTaskItem(
+                    nextTitle: "買い物",
+                    nextStartDate: thirdStart,
+                    nextEndDate: thirdStart.addingTimeInterval(40 * 60),
+                    countdownStartDate: nil,
+                    remainingTimeShort: "2時間30分",
+                    bufferMinutes: nil
+                ),
+            ]
+        )
+    }
+
+    fileprivate static func samplePrimaryOnly(now: Date = .now) -> Self {
+        let primaryStart = now.addingTimeInterval(12 * 60)
+        return Self(
+            schedule: [
+                ActivityTaskItem(
+                    nextTitle: "ジム",
+                    nextStartDate: primaryStart,
+                    nextEndDate: primaryStart.addingTimeInterval(60 * 60),
+                    countdownStartDate: now,
+                    remainingTimeShort: "12分",
+                    bufferMinutes: 15
+                ),
+            ]
+        )
+    }
+
+    fileprivate static func sampleSoonBuffer(now: Date = .now) -> Self {
+        let primaryStart = now.addingTimeInterval(4 * 60)
+        return Self(
+            schedule: [
+                ActivityTaskItem(
+                    nextTitle: "出発",
+                    nextStartDate: primaryStart,
+                    nextEndDate: primaryStart.addingTimeInterval(20 * 60),
+                    countdownStartDate: now.addingTimeInterval(-20 * 60),
+                    remainingTimeShort: "4分",
+                    bufferMinutes: 10
+                ),
+                ActivityTaskItem(
+                    nextTitle: "帰宅",
+                    nextStartDate: now.addingTimeInterval(80 * 60),
+                    nextEndDate: nil,
+                    countdownStartDate: nil,
+                    remainingTimeShort: "1時間20分",
+                    bufferMinutes: nil
+                ),
+            ]
+        )
+    }
+
+    fileprivate static var sampleEmpty: Self {
+        Self(schedule: [])
+    }
+}
+
+#Preview("Lock Screen - Stack", as: .content, using: MAMONAKULiveActivityAttributes.preview) {
+    MAMONAKULiveActivityLiveActivity()
+} contentStates: {
+    MAMONAKULiveActivityAttributes.ContentState.sampleSchedule()
+}
+
+#Preview("Lock Screen - Primary Only", as: .content, using: MAMONAKULiveActivityAttributes.preview) {
+    MAMONAKULiveActivityLiveActivity()
+} contentStates: {
+    MAMONAKULiveActivityAttributes.ContentState.samplePrimaryOnly()
+}
+
+#Preview("Lock Screen - Soon Buffer", as: .content, using: MAMONAKULiveActivityAttributes.preview) {
+    MAMONAKULiveActivityLiveActivity()
+} contentStates: {
+    MAMONAKULiveActivityAttributes.ContentState.sampleSoonBuffer()
+}
+
+#Preview("Lock Screen - Empty", as: .content, using: MAMONAKULiveActivityAttributes.preview) {
+    MAMONAKULiveActivityLiveActivity()
+} contentStates: {
+    MAMONAKULiveActivityAttributes.ContentState.sampleEmpty
+}
+
+#Preview("Dynamic Island - Compact", as: .dynamicIsland(.compact), using: MAMONAKULiveActivityAttributes.preview) {
+    MAMONAKULiveActivityLiveActivity()
+} contentStates: {
+    MAMONAKULiveActivityAttributes.ContentState.sampleSchedule()
+}
+
+#Preview("Dynamic Island - Expanded", as: .dynamicIsland(.expanded), using: MAMONAKULiveActivityAttributes.preview) {
+    MAMONAKULiveActivityLiveActivity()
+} contentStates: {
+    MAMONAKULiveActivityAttributes.ContentState.sampleSchedule()
+}
+
+#Preview("Dynamic Island - Minimal", as: .dynamicIsland(.minimal), using: MAMONAKULiveActivityAttributes.preview) {
+    MAMONAKULiveActivityLiveActivity()
+} contentStates: {
+    MAMONAKULiveActivityAttributes.ContentState.sampleSchedule()
+    MAMONAKULiveActivityAttributes.ContentState.sampleEmpty
 }
