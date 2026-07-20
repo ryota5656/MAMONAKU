@@ -12,7 +12,7 @@ struct ContentView: View {
     var body: some View {
         let state = viewModel.state
         VStack(spacing: 0) {
-            TimelineScreen()
+            MainTabView()
                 .background(AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme))
         }
         .preferredColorScheme(themeManager.theme.preferredColorScheme)

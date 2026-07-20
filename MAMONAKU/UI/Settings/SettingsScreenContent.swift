@@ -76,6 +76,15 @@ struct SettingsScreenContent: View {
                     delegate?.settingsOpenPrivacyPolicy()
                 }
             )
+
+            #if DEBUG
+            DebugSettingsSectionView(
+                primary: primary,
+                secondary: secondary,
+                listBackground: listBackground,
+                debugOverrideSubscribed: viewModel.debugOverrideSubscribedBinding
+            )
+            #endif
         }
         .scrollContentBackground(.hidden)
         .background(background)

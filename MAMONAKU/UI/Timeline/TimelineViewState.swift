@@ -4,11 +4,11 @@ import SwiftUI
 struct TimelineViewState: Equatable {
     var sheetHeight: CGFloat = 0
     var isHeaderExpanded: Bool = true
-    var isTaskSheetPresented: Bool = false
+    var isTaskSheetPresented: Bool = true
     var isDraggingTask: Bool = false
     var isSheetDropTargeted: Bool = false
     var isTaskSheetDraggable: Bool = true
-    var taskSheetDetent: PresentationDetent = .fraction(0.45)
+    var taskSheetDetent: PresentationDetent = TaskSheetPresentation.peek
     var headerHeight: CGFloat = 0
     var isRadialMenuVisible: Bool = false
     var radialSelection: TimelineRadialAction? = nil
@@ -20,6 +20,7 @@ struct TimelineViewState: Equatable {
     var isLiveActivitySyncPending: Bool = false
     var tutorialStep: TimelineTutorialStep? = nil
     var tutorialPulse: Bool = false
+    var taskSheetSelectedTab: TaskSheetTab = .timeline
 }
 
 enum TimelineTutorialStep: Equatable {
@@ -53,6 +54,71 @@ enum TimelineTutorialStep: Equatable {
             return "チュートリアル完了"
         default:
             return "次へ"
+        }
+    }
+}
+
+enum TaskSheetTabBarLayout {
+    /// Live Activity ボタンを含むタブバー行の高さ
+    static let height: CGFloat = 52
+
+    /// タブバーが占有する下端領域。メインコンテンツ・ピークカードの下余白に使う。
+    static var reservedBottomInset: CGFloat {
+        height + 8
+    }
+}
+
+enum TaskSheetPresentation {
+    /// ピーク時に見えるカード部分の高さ（シート外オーバーレイ）
+    static let peekCardHeight: CGFloat = 88
+    /// ピーク時、カード下端とタブバー上端の間隔（タイムライン操作可能な余白）
+    static let peekBottomGap: CGFloat = 10
+
+    /// ピークカードをタブバー上に配置するときの下パディング
+    static var peekOverlayBottomPadding: CGFloat {
+        TaskSheetTabBarLayout.reservedBottomInset + peekBottomGap
+    }
+
+    /// ピーク状態を表す detent（シートの折りたたみ先としても使用）
+    static let peek = PresentationDetent.height(peekCardHeight)
+    static let medium = PresentationDetent.fraction(0.45)
+    static let expanded = PresentationDetent.large
+
+    /// 展開シートで使う detent（下にドラッグしてピークへ戻れる）
+    static var expandedSheetDetents: Set<PresentationDetent> {
+        [peek, medium, expanded]
+    }
+}
+
+/// タスクシート下部のタブ
+enum TaskSheetTab: CaseIterable, Equatable {
+//    case later
+    case timeline
+//    case ai
+    case settings
+
+    var title: String {
+        switch self {
+//        case .later: return "あとで"
+        case .timeline: return "タイムライン"
+//        case .ai: return "AI"
+        case .settings: return "設定"
+        }
+    }
+
+    var icon: String {
+        switch self {
+//        case .later: return "tray.fill"
+        case .timeline: return "chart.bar.fill"
+//        case .ai: return "sparkles"
+        case .settings: return "gearshape.fill"
+        }
+    }
+
+    var isSelectable: Bool {
+        switch self {
+//        case .later, .ai: return false
+        case .timeline, .settings: return true
         }
     }
 }

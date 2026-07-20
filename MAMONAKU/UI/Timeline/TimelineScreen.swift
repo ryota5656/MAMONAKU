@@ -1,23 +1,9 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// タイムライン画面のエントリーポイント。ViewModel の保持とシステム制御（Sheet / ライフサイクル）のみを担う。
+/// タイムライン画面のエントリーポイント。ViewModel 連携とシート / ピークカード制御を担う。
 struct TimelineScreen: View {
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
-    @StateObject private var viewModel: TimelineViewModel
-
-    init() {
-        _viewModel = StateObject(wrappedValue: TimelineViewModel())
-    }
-
-    init(items: [TimelineItem]) {
-        _viewModel = StateObject(
-            wrappedValue: TimelineViewModel(
-                initialItems: items,
-                enablePolling: false
-            )
-        )
-    }
+    @ObservedObject var viewModel: TimelineViewModel
 
     var body: some View {
         TimelineScreenContent(
@@ -25,13 +11,17 @@ struct TimelineScreen: View {
             viewModel: viewModel,
             delegate: viewModel
         )
+        .overlay(alignment: .bottom) {
+            if showsPeekCard {
+                taskSheetPeekCard
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.state.taskSheetDetent)
         .onPreferenceChange(HeaderHeightKey.self) { value in
             viewModel.state.headerHeight = value
         }
-        .sheet(isPresented: taskSheetPresented) { taskSheetContent }
-        .sheet(isPresented: settingsPresented) {
-            SettingsScreen()
-        }
+        .sheet(isPresented: expandedSheetPresented, content: { taskSheetContent })
         .onChange(of: viewModel.dropPreview) { _, preview in
             viewModel.timelineDropPreviewDidChange(previewExists: preview != nil)
         }
@@ -43,38 +33,45 @@ struct TimelineScreen: View {
         }
     }
 
-    private var taskSheetPresented: Binding<Bool> {
-        Binding(
-            get: { viewModel.state.isTaskSheetPresented },
-            set: { viewModel.state.isTaskSheetPresented = $0 }
-        )
+    private var showsPeekCard: Bool {
+        viewModel.state.taskSheetDetent == TaskSheetPresentation.peek
     }
 
-    private var settingsPresented: Binding<Bool> {
-        Binding(
-            get: { viewModel.state.isSettingsPresented },
-            set: { viewModel.state.isSettingsPresented = $0 }
+    private var taskSheetPeekCard: some View {
+        TaskListPeekCardView(
+            items: viewModel.items,
+            isDraggingTask: isDraggingTaskBinding,
+            isSheetDropTargeted: isSheetDropTargetedBinding,
+            dragItemID: $viewModel.dragItemID,
+            heightForDuration: { viewModel.heightForDuration($0) },
+            onExpand: expandTaskSheetFromPeek,
+            onReturnToStock: { id in
+                viewModel.returnItemToStock(id: id)
+            }
         )
+        .padding(.horizontal, 16)
+        .padding(.bottom, TaskSheetPresentation.peekOverlayBottomPadding)
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     private var taskSheetContent: some View {
+        taskListSheetView
+            .presentationDetents(taskSheetDetents, selection: sheetDetentBinding)
+            .presentationDragIndicator(taskSheetDragIndicator)
+            .presentationBackgroundInteraction(.enabled)
+            .interactiveDismissDisabled(true)
+    }
+
+    private var taskListSheetView: some View {
         TaskListSheetView(
             items: viewModel.items,
-            isPresented: taskSheetPresented,
-            isDraggingTask: Binding(
-                get: { viewModel.state.isDraggingTask },
-                set: { viewModel.state.isDraggingTask = $0 }
-            ),
-            isSheetDropTargeted: Binding(
-                get: { viewModel.state.isSheetDropTargeted },
-                set: { viewModel.state.isSheetDropTargeted = $0 }
-            ),
+            isPresented: expandedSheetPresented,
+            isDraggingTask: isDraggingTaskBinding,
+            isSheetDropTargeted: isSheetDropTargetedBinding,
             dragItemID: $viewModel.dragItemID,
             isSheetExpanded: $viewModel.chipsExpanded,
-            isSheetDraggable: Binding(
-                get: { viewModel.state.isTaskSheetDraggable },
-                set: { viewModel.state.isTaskSheetDraggable = $0 }
-            ),
+            sheetDetent: sheetDetentBinding,
+            isSheetDraggable: isSheetDraggableBinding,
             onMove: { from, to in
                 viewModel.moveTaskItems(from: from, to: to)
             },
@@ -92,25 +89,76 @@ struct TimelineScreen: View {
                     priority: priority
                 )
             },
-            heightForDuration: { viewModel.heightForDuration($0) },
-            onAddDebugTask: { minutes in
-                viewModel.addTestTask(
-                    startDate: Date().addingTimeInterval(TimeInterval(minutes * 60)),
-                    durationMinutes: 15
-                )
+            onReturnToStock: { id in
+                viewModel.returnItemToStock(id: id)
             },
+            heightForDuration: { viewModel.heightForDuration($0) },
+            onAddDebugTask: addDebugTask,
             isSubscribed: subscriptionManager.effectiveIsSubscribed
         )
-        .presentationDetents(
-            viewModel.state.isTaskSheetDraggable ? [.fraction(0.45), .large] : [viewModel.state.taskSheetDetent],
-            selection: Binding(
-                get: { viewModel.state.taskSheetDetent },
-                set: { viewModel.state.taskSheetDetent = $0 }
-            )
+    }
+
+    private var taskSheetDetents: Set<PresentationDetent> {
+        if viewModel.state.isTaskSheetDraggable {
+            return TaskSheetPresentation.expandedSheetDetents
+        }
+        return [viewModel.state.taskSheetDetent]
+    }
+
+    private var taskSheetDragIndicator: Visibility {
+        viewModel.state.isTaskSheetDraggable ? .visible : .hidden
+    }
+
+    private var isDraggingTaskBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.state.isDraggingTask },
+            set: { viewModel.state.isDraggingTask = $0 }
         )
-        .presentationDragIndicator(viewModel.state.isTaskSheetDraggable ? .visible : .hidden)
-        .presentationBackgroundInteraction(.enabled)
-        .interactiveDismissDisabled(!viewModel.state.isTaskSheetDraggable)
+    }
+
+    private var isSheetDropTargetedBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.state.isSheetDropTargeted },
+            set: { viewModel.state.isSheetDropTargeted = $0 }
+        )
+    }
+
+    private var sheetDetentBinding: Binding<PresentationDetent> {
+        Binding(
+            get: { viewModel.state.taskSheetDetent },
+            set: { viewModel.state.taskSheetDetent = $0 }
+        )
+    }
+
+    private var isSheetDraggableBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.state.isTaskSheetDraggable },
+            set: { viewModel.state.isTaskSheetDraggable = $0 }
+        )
+    }
+
+    private var expandedSheetPresented: Binding<Bool> {
+        Binding(
+            get: {
+                viewModel.state.taskSheetDetent != TaskSheetPresentation.peek
+            },
+            set: { presented in
+                if !presented {
+                    viewModel.state.taskSheetDetent = TaskSheetPresentation.peek
+                }
+            }
+        )
+    }
+
+    private func expandTaskSheetFromPeek() {
+        viewModel.state.taskSheetDetent = TaskSheetPresentation.medium
+    }
+
+    private func addDebugTask(minutes: Int) {
+        viewModel.addTestTask(
+            startDate: Date().addingTimeInterval(TimeInterval(minutes * 60)),
+            durationMinutes: 15
+        )
     }
 
     private func ensureTutorialTaskExists() {
@@ -131,7 +179,7 @@ struct TimelineScreen: View {
 }
 
 #Preview {
-    ContentView()
+    MainTabView()
         .environmentObject(SubscriptionManager())
         .environmentObject(ThemeManager())
 }
@@ -147,7 +195,7 @@ struct TimelineScreen: View {
 }
 
 #Preview("timeline with items") {
-    TimelineScreen(items: [
+    MainTabView(timelineItems: [
         TimelineItem(title: "Wake up", durationMinutes: 15, startMinutes: 17 * 60, dropDate: Date()),
         TimelineItem(title: "Workout", durationMinutes: 60, startMinutes: 2 * 60 + 45, dropDate: Date()),
         TimelineItem(title: "Breakfast", durationMinutes: 30, startMinutes: 4 * 60, dropDate: Date()),

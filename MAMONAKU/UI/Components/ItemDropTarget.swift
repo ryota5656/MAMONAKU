@@ -8,14 +8,15 @@ struct ItemDropTarget: UIViewRepresentable {
     var onDragEntered: (() -> Void)? = nil
     var onDragExited: (() -> Void)? = nil
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
+    func makeUIView(context: Context) -> DropTargetView {
+        let view = DropTargetView()
         view.backgroundColor = .clear
-        view.addInteraction(UIDropInteraction(delegate: context.coordinator))
+        view.dropInteraction = UIDropInteraction(delegate: context.coordinator)
+        view.addInteraction(view.dropInteraction!)
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
+    func updateUIView(_ uiView: DropTargetView, context: Context) {
         context.coordinator.onDrop = onDrop
         context.coordinator.onDragEntered = onDragEntered
         context.coordinator.onDragExited = onDragExited
@@ -86,6 +87,15 @@ struct ItemDropTarget: UIViewRepresentable {
                 }()
                 complete(with: id)
             }
+        }
+    }
+
+    /// 通常タップは下の SwiftUI に透過し、ドラッグ＆ドロップのみ受け取る
+    final class DropTargetView: UIView {
+        var dropInteraction: UIDropInteraction?
+
+        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+            nil
         }
     }
 }

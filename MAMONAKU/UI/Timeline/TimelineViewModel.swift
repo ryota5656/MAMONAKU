@@ -102,6 +102,8 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
     // MARK: - TimelineDelegate
 
     func timelineDidAppear(ensureTutorialTask: () -> Void) {
+        state.isTaskSheetPresented = true
+        state.taskSheetDetent = TaskSheetPresentation.peek
         startFirstRunTutorialIfNeeded(ensureTutorialTask: ensureTutorialTask)
     }
 
@@ -112,8 +114,8 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
     }
 
     func timelineDropPreviewDidChange(previewExists: Bool) {
-        guard state.isTaskSheetPresented, state.isDraggingTask, previewExists else { return }
-        state.isTaskSheetPresented = false
+        guard state.isDraggingTask, previewExists else { return }
+        state.taskSheetDetent = TaskSheetPresentation.peek
     }
 
     func timelineToggleHeaderExpanded() {
@@ -122,13 +124,22 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
 
     func timelineOpenTaskSheet() {
         state.isTaskSheetPresented = true
+        state.taskSheetSelectedTab = .timeline
         if state.tutorialStep == .openTaskList {
             state.tutorialStep = .placeTaskAfterNow
+            state.taskSheetDetent = TaskSheetPresentation.medium
+        } else if sheetDetentIsCollapsed {
+            state.taskSheetDetent = TaskSheetPresentation.medium
         }
     }
 
+    private var sheetDetentIsCollapsed: Bool {
+        state.taskSheetDetent == TaskSheetPresentation.peek
+    }
+
     func timelineOpenSettings() {
-        state.isSettingsPresented = true
+        state.taskSheetDetent = TaskSheetPresentation.peek
+        state.taskSheetSelectedTab = .settings
     }
 
     func timelineRefreshLiveActivityManually() async {

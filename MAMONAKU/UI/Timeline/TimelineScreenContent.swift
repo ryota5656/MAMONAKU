@@ -15,11 +15,11 @@ struct TimelineScreenContent: View {
             headerSection
             whiteSheetSection
         }
-        .overlay(alignment: .top) { tutorialTopOverlay }
-        .overlay(alignment: .top) { liveActivityPendingBanner }
+//        .overlay(alignment: .top) { tutorialTopOverlay }
+//        .overlay(alignment: .top) { liveActivityPendingBanner }
         .overlay { liveActivityLoadingOverlay }
-        .overlay(alignment: .bottomLeading) { leftBottomOverlay }
-        .overlay(alignment: .bottomTrailing) { rightBottomOverlay }
+//        .overlay(alignment: .bottomLeading) { leftBottomOverlay }
+//        .overlay(alignment: .bottomTrailing) { rightBottomOverlay }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
@@ -47,7 +47,7 @@ struct TimelineScreenContent: View {
                 delegate?.timelineOpenSettings()
             }
         )
-        .offset(y: state.isHeaderExpanded ? (state.headerHeight + 12) : 0)
+        .offset(y: state.isHeaderExpanded ? (state.headerHeight ) : 0)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: state.isHeaderExpanded)
     }
 

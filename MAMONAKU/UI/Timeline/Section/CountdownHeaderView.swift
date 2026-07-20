@@ -35,18 +35,18 @@ struct CountdownHeaderView: View {
                 .padding(.bottom, 5)
                     
                     
-                VStack {
-                    if let _ = next, diff <= 3600 {
-                        TimelineCountdownProgressBar(
-                            secondsRemaining: diff,
-                            accent: AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
-                        )
-                    }
-                }
+//                VStack {
+//                    if let _ = next, diff <= 3600 {
+//                        TimelineCountdownProgressBar(
+//                            secondsRemaining: diff,
+//                            accent: AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
+//                        )
+//                    }
+//                }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(.top, 20)
-            .padding(.bottom, 20)
+            .padding(.top, 10)
+            .padding(.bottom, 10)
             .padding(.horizontal, 18)
         }
 

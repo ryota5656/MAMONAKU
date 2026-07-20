@@ -13,11 +13,9 @@ struct CalendarHeaderTopBar: View {
 
         HStack {
             CalendarHeaderWeekdayLabel(date: selectedDate)
+            
             Spacer()
-            CalendarHeaderSettingsButton(
-                isHighlighted: isSettingsHighlighted,
-                onTap: onOpenSettings
-            )
+            
             Button(action: onOpenMonthCalendar) {
                 Text(CalendarHeaderDateFormatting.dateText(for: selectedDate))
                     .font(.system(size: 14, weight: .semibold))
