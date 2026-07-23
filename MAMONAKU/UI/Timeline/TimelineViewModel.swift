@@ -737,46 +737,55 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
     }
 
     /// 編集完了 / 手動更新時: ローカル LA 更新 + Firestore 予定同期（Functions が Tasks 再登録）
+」    /// クラウド同期成功時はローカルローテーションを使わず APNs のみにする。
     func commitPendingLiveActivitySync(force: Bool = false) async {
         guard force || LiveActivitySyncCoordinator.isPending else { return }
         guard isLiveActivityEnabled else {
             LiveActivitySyncCoordinator.clearPending()
             state.isLiveActivitySyncPending = false
+            cancelLocalLiveActivityRotation()
             return
         }
         print("[LiveActivity] Committing sync (force=\(force))")
-        await startOrUpdateLiveActivity()
+        let rotations = await startOrUpdateLiveActivity(scheduleLocalRotationFallback: false)
         do {
             try await TimelineFirestoreSyncService.shared.syncTodaySchedules(
                 items: items,
                 maxVisibleSlots: liveActivityPlanScope.maxVisibleSlots
             )
+            cancelLocalLiveActivityRotation()
             LiveActivitySyncCoordinator.clearPending()
             state.isLiveActivitySyncPending = false
+            print("[LiveActivity] Cloud sync succeeded — rotations will come from APNs only")
         } catch {
+            if let rotations {
+                scheduleNextLocalRotation(rotations)
+            }
             LiveActivitySyncCoordinator.markPending()
             state.isLiveActivitySyncPending = true
-            print("[LiveActivity] Firestore sync failed: \(error.localizedDescription)")
+            print("[LiveActivity] Firestore sync failed — local rotation fallback enabled: \(error.localizedDescription)")
         }
     }
 
     /// 編集完了ボタン用: 編集モード解除後にクラウド同期する。
     func completeEditingAndSyncLiveActivity() async {
         exitEditMode()
-        await commitPendingLiveActivitySync(force: true)
     }
 }
 
 // MARK: - LiveActivity
 extension TimelineViewModel {
 
-    /// 今日の予定からスタック型 Live Activity（最大3件）を作成・更新し、Cloud Tasks にローテーションを予約する。
-    func startOrUpdateLiveActivity() async {
+    /// 今日の予定からスタック型 Live Activity をローカル更新する。
+    /// - Parameter scheduleLocalRotationFallback: true のときだけ次切り替えをローカル予約する（クラウド同期失敗時用）。
+    /// - Returns: 組み立てた ro」tations（フォールバック予約用）。更新できない場合は nil。
+    @discardableResult
+    func startOrUpdateLiveActivity(scheduleLocalRotationFallback: Bool = false) async -> [LiveActivityScheduleBuilder.Rotation]? {
         guard isLiveActivityEnabled else {
             await endLiveActivityIfNeeded()
-            return
+            return nil
         }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return nil }
 
         let now = Date()
         let planScope = liveActivityPlanScope
@@ -793,7 +802,7 @@ extension TimelineViewModel {
 
         guard !window.isEmpty else {
             await endLiveActivityIfNeeded()
-            return
+            return nil
         }
 
         let schedule = LiveActivityScheduleBuilder.buildTaskItems(
@@ -817,8 +826,13 @@ extension TimelineViewModel {
 
         let staleDate = entries[startIndex].startDate
         await upsertStackLiveActivity(schedule: schedule, staleDate: staleDate)
-        scheduleNextLocalRotation(rotations)
-        // クラウド Tasks は Firestore 予定同期 → Functions 監視で登録する（rotations POST はしない）
+
+        if scheduleLocalRotationFallback {
+            scheduleNextLocalRotation(rotations)
+        } else {
+            cancelLocalLiveActivityRotation()
+        }
+        return rotations
     }
 
     /// プライマリのカウントダウンが 0:00 を過ぎていたら、次の予定へ切り替える。
@@ -835,12 +849,13 @@ extension TimelineViewModel {
         else { return }
 
         print("[LiveActivity] Overdue refresh — primary target was \(target.formatted())")
-        await startOrUpdateLiveActivity()
+        // 表示の直しのみ。継続ローテーションは APNs（または同期失敗時フォールバック）に任せる
+        await startOrUpdateLiveActivity(scheduleLocalRotationFallback: false)
     }
 
-    /// Cloud Tasks が届かない場合のフォールバック。次のローテーション時刻にローカル更新する。
+    /// Cloud Tasks / APNs が使えない場合のフォールバック。次のローテーション時刻にローカル更新する。
     private func scheduleNextLocalRotation(_ rotations: [LiveActivityScheduleBuilder.Rotation]) {
-        liveActivityRefreshTask?.cancel()
+        cancelLocalLiveActivityRotation()
 
         guard let next = rotations
             .filter({ $0.switchAt > Date() })
@@ -856,23 +871,26 @@ extension TimelineViewModel {
             await self?.handleLocalRotation(next)
         }
 
-        print("[LiveActivity] Local rotation scheduled at \(next.switchAt.formatted()) (\(next.reason))")
+        print("[LiveActivity] Local rotation fallback scheduled at \(next.switchAt.formatted()) (\(next.reason))")
+    }
+
+    private func cancelLocalLiveActivityRotation() {
+        liveActivityRefreshTask?.cancel()
+        liveActivityRefreshTask = nil
     }
 
     private func handleLocalRotation(_ rotation: LiveActivityScheduleBuilder.Rotation) async {
-        print("[LiveActivity] Local rotation fired — \(rotation.reason)")
+        print("[LiveActivity] Local rotation fallback fired — \(rotation.reason)")
         if rotation.shouldEndActivity {
             await endLiveActivityIfNeeded()
-            liveActivityRefreshTask?.cancel()
-            liveActivityRefreshTask = nil
             return
         }
-        await startOrUpdateLiveActivity()
+        // フォールバック連鎖: まだクラウド未同期ならローカル予約を続ける
+        await startOrUpdateLiveActivity(scheduleLocalRotationFallback: LiveActivitySyncCoordinator.isPending)
     }
 
     private func endLiveActivityIfNeeded() async {
-        liveActivityRefreshTask?.cancel()
-        liveActivityRefreshTask = nil
+        cancelLocalLiveActivityRotation()
 
         let activities = Activity<MAMONAKULiveActivityAttributes>.activities
         for liveActivity in activities where isManagedLiveActivity(liveActivity) {
@@ -909,6 +927,8 @@ extension TimelineViewModel {
         await clearLegacyTimelineActivities()
 
         do {
+            // 新規 Activity の update トークンは作り直されるため、古いキャッシュでは同期しない
+            LiveActivityPushService.shared.invalidateCachedLiveActivityUpdateToken()
             let created = try Activity.request(
                 attributes: attributes,
                 content: content,

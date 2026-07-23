@@ -60,6 +60,72 @@ final class LiveActivityPushService {
         observeContentUpdates(for: activity)
     }
 
+    /// Firestore / APNs 同期に必要な FCM トークン。
+    var currentFCMToken: String? {
+        let token = appGroupDefaults?.string(forKey: AppGroup.fcmTokenKey)
+        guard let token, !token.isEmpty else { return nil }
+        return token
+    }
+
+    /// Live Activity update 用 APNs トークン。
+    var currentLiveActivityUpdateToken: String? {
+        if let latestUpdateToken, !latestUpdateToken.isEmpty {
+            return latestUpdateToken
+        }
+        let token = appGroupDefaults?.string(forKey: AppGroup.liveActivityUpdateTokenKey)
+        guard let token, !token.isEmpty else { return nil }
+        return token
+    }
+
+    var hasRequiredPushTokens: Bool {
+        currentFCMToken != nil && currentLiveActivityUpdateToken != nil
+    }
+
+    /// 新規 Live Activity 作成時に古い update トークンを捨て、再取得を待つ。
+    func invalidateCachedLiveActivityUpdateToken() {
+        latestUpdateToken = nil
+        appGroupDefaults?.removeObject(forKey: AppGroup.liveActivityUpdateTokenKey)
+        print("[LiveActivityPush] Cached Live Activity update token invalidated")
+    }
+
+    /// FCM + Live Activity update トークンが揃うまで待つ。
+    func waitForRequiredPushTokens(timeoutSeconds: TimeInterval = 15) async throws {
+        if hasRequiredPushTokens {
+            print("[LiveActivityPush] Required push tokens already available")
+            return
+        }
+
+        print("[LiveActivityPush] Waiting for push tokens (timeout=\(Int(timeoutSeconds))s)…")
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while Date() < deadline {
+            if hasRequiredPushTokens {
+                print("[LiveActivityPush] Required push tokens ready")
+                return
+            }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
+
+        throw TokenWaitError.timedOut(
+            missingFCM: currentFCMToken == nil,
+            missingLiveActivity: currentLiveActivityUpdateToken == nil
+        )
+    }
+
+    enum TokenWaitError: LocalizedError {
+        case timedOut(missingFCM: Bool, missingLiveActivity: Bool)
+
+        var errorDescription: String? {
+            switch self {
+            case let .timedOut(missingFCM, missingLiveActivity):
+                var parts: [String] = []
+                if missingFCM { parts.append("FCM") }
+                if missingLiveActivity { parts.append("Live Activity update") }
+                let label = parts.isEmpty ? "unknown" : parts.joined(separator: " / ")
+                return "プッシュトークンの取得がタイムアウトしました（欠如: \(label)）"
+            }
+        }
+    }
+
     /// OS / リモート push による ContentState 変更を監視してログ出力する。
     func observeContentUpdates(for activity: Activity<MAMONAKULiveActivityAttributes>) {
         Task { [logger] in

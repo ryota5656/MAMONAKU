@@ -12,10 +12,6 @@ final class TimelineFirestoreSyncService {
     private let logger = Logger(subsystem: "sairyo.MAMONAKU", category: "TimelineFirestoreSync")
     private lazy var db = Firestore.firestore()
 
-    private var appGroupDefaults: UserDefaults? {
-        UserDefaults(suiteName: AppGroup.id)
-    }
-
     private init() {}
 
     /// 当日の Live Activity 対象予定を Firestore に全置換し、rebuild を要求する。
@@ -83,6 +79,7 @@ final class TimelineFirestoreSyncService {
         }
 
         let deviceId = LiveActivityPushService.shared.resolvedDeviceID()
+        try await LiveActivityPushService.shared.waitForRequiredPushTokens(timeoutSeconds: 15)
         try await upsertDeviceTokens(uid: uid, deviceId: deviceId, batch: batch)
 
         let rebuildRef = db.collection("users").document(uid)
@@ -105,9 +102,12 @@ final class TimelineFirestoreSyncService {
     }
 
     private func upsertDeviceTokens(uid: String, deviceId: String, batch: WriteBatch) async throws {
-        let defaults = appGroupDefaults
-        let fcmToken = defaults?.string(forKey: AppGroup.fcmTokenKey) ?? ""
-        let liveActivityToken = defaults?.string(forKey: AppGroup.liveActivityUpdateTokenKey) ?? ""
+        guard
+            let fcmToken = LiveActivityPushService.shared.currentFCMToken,
+            let liveActivityToken = LiveActivityPushService.shared.currentLiveActivityUpdateToken
+        else {
+            throw SyncError.missingPushTokens
+        }
         let apnsTopic = LiveActivityPushService.apnsTopic
 
         let deviceRef = db.collection("users").document(uid).collection("devices").document(deviceId)
@@ -134,6 +134,7 @@ final class TimelineFirestoreSyncService {
             forDocument: laDeviceRef,
             merge: true
         )
+        print("[TimelineFirestoreSync] Device tokens upserted (fcm=\(fcmToken.prefix(8))… la=\(liveActivityToken.prefix(8))…)")
     }
 
     private func resolveUID() async -> String? {
@@ -146,11 +147,14 @@ final class TimelineFirestoreSyncService {
 
     enum SyncError: LocalizedError {
         case notAuthenticated
+        case missingPushTokens
 
         var errorDescription: String? {
             switch self {
             case .notAuthenticated:
                 return "Firebase 匿名認証が未完了です"
+            case .missingPushTokens:
+                return "プッシュトークンが未取得です"
             }
         }
     }
