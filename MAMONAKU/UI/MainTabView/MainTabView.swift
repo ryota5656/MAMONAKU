@@ -1,9 +1,13 @@
 import SwiftUI
 
-/// アプリ本体のタブシェル。タイムライン / 設定の Screen を切り替え、共通タブバーを表示する。
+/// アプリ本体のタブシェル。タイムライン / 設定を切り替え、右端は `Tab(role: .search)` でアクションを置く。
 struct MainTabView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
     @StateObject private var timelineViewModel: TimelineViewModel
-    @State private var bottomSafeAreaInset: CGFloat = 0
+    /// TabView の選択。`.action` はタップ検知用で、すぐ直前タブへ戻す。
+    @State private var selectedTab: TaskSheetTab = .timeline
+    @State private var lastContentTab: TaskSheetTab = .timeline
 
     init() {
         _timelineViewModel = StateObject(wrappedValue: TimelineViewModel())
@@ -19,57 +23,104 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        tabContent
-            .background {
-                GeometryReader { geo in
-                    Color.clear
-                        .preference(key: MainTabBottomSafeAreaInsetKey.self, value: geo.safeAreaInsets.bottom)
-                }
-                .ignoresSafeArea(.keyboard)
+        TabView(selection: $selectedTab) {
+            Tab(TaskSheetTab.timeline.title, systemImage: TaskSheetTab.timeline.icon, value: .timeline) {
+                TimelineScreen(viewModel: timelineViewModel)
             }
-            .onPreferenceChange(MainTabBottomSafeAreaInsetKey.self) { bottomSafeAreaInset = $0 }
-            .overlay(alignment: .bottom) {
-                taskSheetTabBar
+
+            Tab(TaskSheetTab.settings.title, systemImage: TaskSheetTab.settings.icon, value: .settings) {
+                SettingsScreen()
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: timelineViewModel.editMode.isEditing)
-            .ignoresSafeArea(.keyboard)
+
+            Tab(value: .action, role: .search) {
+                // 中身は触らず、onChange で直前タブへ戻す（Color.clear は白画面に見える）。
+                // TimelineScreen を載せると onAppear が再発火するため背景のみにする。
+                AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme)
+                    .ignoresSafeArea()
+            } label: {
+                actionTabLabel
+            }
+            .badge(actionTabBadgeCount)
+        }
+        .tint(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
+        .onChange(of: selectedTab) { previous, newValue in
+            handleTabSelectionChange(previous: previous, newValue: newValue)
+        }
+        .onChange(of: timelineViewModel.state.taskSheetSelectedTab) { _, newValue in
+            syncSelectionFromViewModel(newValue)
+        }
+        .onAppear {
+            let initial = timelineViewModel.state.taskSheetSelectedTab
+            let content = initial.isContentTab ? initial : .timeline
+            selectedTab = content
+            lastContentTab = content
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: timelineViewModel.editMode.isEditing)
+        .ignoresSafeArea(.keyboard)
     }
 
     @ViewBuilder
-    private var tabContent: some View {
-        switch selectedTab {
-        case .timeline:
-            TimelineScreen(viewModel: timelineViewModel)
-        case .settings:
-            SettingsScreen()
-                .padding(.bottom, TaskSheetTabBarLayout.reservedBottomInset)
+    private var actionTabLabel: some View {
+        if isTimelineEditing {
+            Label("完了", systemImage: "checkmark")
+        } else if isLiveActivityRefreshing {
+            ProgressView()
+        } else {
+            Label("更新", systemImage: "arrow.clockwise")
         }
     }
 
-    private var taskSheetTabBar: some View {
-        TaskSheetTabBarView(
-            selectedTab: selectedTabBinding,
-            isTimelineEditing: timelineViewModel.editMode.isEditing,
-            isLiveActivityRefreshing: timelineViewModel.state.isLiveActivityRefreshing,
-            isLiveActivitySyncPending: timelineViewModel.state.isLiveActivitySyncPending,
-            onCompleteEditing: completeEditing,
-            onRefreshLiveActivity: refreshLiveActivity
-        )
-        .padding(.horizontal, 16)
-        .offset(y: bottomSafeAreaInset)
-        .ignoresSafeArea(.keyboard, edges: .bottom)
+    private var actionTabBadgeCount: Int {
+        guard !isTimelineEditing,
+              !isLiveActivityRefreshing,
+              isLiveActivitySyncPending else { return 0 }
+        return 1
     }
 
-    private var selectedTab: TaskSheetTab {
-        timelineViewModel.state.taskSheetSelectedTab
+    private var isTimelineEditing: Bool {
+        timelineViewModel.editMode.isEditing
     }
 
-    private var selectedTabBinding: Binding<TaskSheetTab> {
-        Binding(
-            get: { timelineViewModel.state.taskSheetSelectedTab },
-            set: { timelineViewModel.state.taskSheetSelectedTab = $0 }
-        )
+    private var isLiveActivityRefreshing: Bool {
+        timelineViewModel.state.isLiveActivityRefreshing
+    }
+
+    private var isLiveActivitySyncPending: Bool {
+        timelineViewModel.state.isLiveActivitySyncPending
+    }
+
+    private func handleTabSelectionChange(previous: TaskSheetTab, newValue: TaskSheetTab) {
+        if newValue == .action {
+            let restoreTo = previous.isContentTab ? previous : lastContentTab
+            performTrailingAction()
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                selectedTab = restoreTo
+                timelineViewModel.state.taskSheetSelectedTab = restoreTo
+            }
+            return
+        }
+
+        lastContentTab = newValue
+        timelineViewModel.state.taskSheetSelectedTab = newValue
+    }
+
+    private func syncSelectionFromViewModel(_ newValue: TaskSheetTab) {
+        guard newValue.isContentTab else { return }
+        guard selectedTab != newValue else { return }
+        selectedTab = newValue
+        lastContentTab = newValue
+    }
+
+    private func performTrailingAction() {
+        if isTimelineEditing {
+            completeEditing()
+            return
+        }
+        guard !isLiveActivityRefreshing else { return }
+        refreshLiveActivity()
     }
 
     private func completeEditing() {
@@ -78,14 +129,6 @@ struct MainTabView: View {
 
     private func refreshLiveActivity() {
         Task { await timelineViewModel.timelineRefreshLiveActivityManually() }
-    }
-}
-
-private enum MainTabBottomSafeAreaInsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }
 

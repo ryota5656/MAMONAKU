@@ -58,26 +58,11 @@ enum TimelineTutorialStep: Equatable {
     }
 }
 
-enum TaskSheetTabBarLayout {
-    /// Live Activity ボタンを含むタブバー行の高さ
-    static let height: CGFloat = 52
-
-    /// タブバーが占有する下端領域。メインコンテンツ・ピークカードの下余白に使う。
-    static var reservedBottomInset: CGFloat {
-        height + 8
-    }
-}
-
 enum TaskSheetPresentation {
     /// ピーク時に見えるカード部分の高さ（シート外オーバーレイ）
     static let peekCardHeight: CGFloat = 88
-    /// ピーク時、カード下端とタブバー上端の間隔（タイムライン操作可能な余白）
+    /// ピーク時、カード下端とシステムタブバー上端の間隔
     static let peekBottomGap: CGFloat = 10
-
-    /// ピークカードをタブバー上に配置するときの下パディング
-    static var peekOverlayBottomPadding: CGFloat {
-        TaskSheetTabBarLayout.reservedBottomInset + peekBottomGap
-    }
 
     /// ピーク状態を表す detent（シートの折りたたみ先としても使用）
     static let peek = PresentationDetent.height(peekCardHeight)
@@ -90,12 +75,14 @@ enum TaskSheetPresentation {
     }
 }
 
-/// タスクシート下部のタブ
-enum TaskSheetTab: CaseIterable, Equatable {
+/// メイン画面のタブ。`action` は `Tab(role: .search)` の右端アクション用。
+enum TaskSheetTab: Hashable, CaseIterable, Equatable {
 //    case later
     case timeline
 //    case ai
     case settings
+    /// Live Activity 更新 / 編集完了（選択せずアクションのみ発火）
+    case action
 
     var title: String {
         switch self {
@@ -103,6 +90,7 @@ enum TaskSheetTab: CaseIterable, Equatable {
         case .timeline: return "タイムライン"
 //        case .ai: return "AI"
         case .settings: return "設定"
+        case .action: return "更新"
         }
     }
 
@@ -112,13 +100,14 @@ enum TaskSheetTab: CaseIterable, Equatable {
         case .timeline: return "chart.bar.fill"
 //        case .ai: return "sparkles"
         case .settings: return "gearshape.fill"
+        case .action: return "arrow.clockwise"
         }
     }
 
-    var isSelectable: Bool {
+    var isContentTab: Bool {
         switch self {
-//        case .later, .ai: return false
         case .timeline, .settings: return true
+        case .action: return false
         }
     }
 }

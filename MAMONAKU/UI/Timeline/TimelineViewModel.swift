@@ -737,7 +737,7 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
     }
 
     /// 編集完了 / 手動更新時: ローカル LA 更新 + Firestore 予定同期（Functions が Tasks 再登録）
-」    /// クラウド同期成功時はローカルローテーションを使わず APNs のみにする。
+    /// クラウド同期成功時はローカルローテーションを使わず APNs のみにする。
     func commitPendingLiveActivitySync(force: Bool = false) async {
         guard force || LiveActivitySyncCoordinator.isPending else { return }
         guard isLiveActivityEnabled else {

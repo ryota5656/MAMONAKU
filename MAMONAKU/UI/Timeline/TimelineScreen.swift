@@ -11,7 +11,7 @@ struct TimelineScreen: View {
             viewModel: viewModel,
             delegate: viewModel
         )
-        .overlay(alignment: .bottom) {
+        .safeAreaInset(edge: .bottom, spacing: TaskSheetPresentation.peekBottomGap) {
             if showsPeekCard {
                 taskSheetPeekCard
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -51,7 +51,6 @@ struct TimelineScreen: View {
             }
         )
         .padding(.horizontal, 16)
-        .padding(.bottom, TaskSheetPresentation.peekOverlayBottomPadding)
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
