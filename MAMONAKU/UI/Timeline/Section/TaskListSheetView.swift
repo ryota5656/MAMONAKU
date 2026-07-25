@@ -30,6 +30,8 @@ struct TaskListSheetView: View {
     @State private var newPriority: TaskPriority = .medium
     @State private var showTimelineItems = true
     @State private var editingItemID: UUID?
+    /// キーボード表示時の detent 変化とキーボード押上のアニメ差を緩衝する
+    @State private var keyboardSyncedMaxHeight: CGFloat?
     @FocusState private var isTaskInputFocused: Bool
 
     private var stockTasks: [TimelineItem] {
@@ -45,10 +47,13 @@ struct TaskListSheetView: View {
         let accent = AppColors.accent(palette: themeManager.theme, environmentScheme: colorScheme)
 
         VStack(spacing: 12) {
-            expandedContent(secondary: secondary)
+            expandedListContent(secondary: secondary)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            taskInputAccessory(secondary: secondary)
+        }
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(accent.opacity(isSheetDropTargeted ? 0.14 : 0))
@@ -71,6 +76,14 @@ struct TaskListSheetView: View {
                     isSheetDropTargeted = false
                 }
             )
+        }
+        // medium → large の detent 変化とキーボード押上のズレで一度飛び上がるのを抑える
+        .frame(maxHeight: keyboardSyncedMaxHeight)
+        .frame(maxHeight: .infinity)
+        .onGeometryChange(for: CGFloat.self, of: \.size.height) { height in
+            withAnimation(.spring(duration: 0.25)) {
+                keyboardSyncedMaxHeight = height
+            }
         }
         .onAppear {
             isSheetDraggable = !editMode.isEditing
@@ -95,7 +108,7 @@ struct TaskListSheetView: View {
     }
 
     @ViewBuilder
-    private func expandedContent(secondary: Color) -> some View {
+    private func expandedListContent(secondary: Color) -> some View {
         TaskListSheetHeaderBar(
             hasTimelineTasks: !timelineTasks.isEmpty,
             showTimelineItems: $showTimelineItems,
@@ -155,27 +168,32 @@ struct TaskListSheetView: View {
                 }
             }
             .listStyle(.plain)
+            .scrollDismissesKeyboard(.interactively)
             .environment(\.editMode, $editMode)
             .frame(maxHeight: .infinity)
             .environment(\.defaultMinListRowHeight, 44)
         }
+    }
 
-        Divider()
+    private func taskInputAccessory(secondary: Color) -> some View {
+        VStack(spacing: 8) {
+            Divider()
 
-        TaskInputRow(
-            isSubscribed: isSubscribed,
-            title: $newTitle,
-            durationMinutes: $newDurationMinutes,
-            priority: $newPriority,
-            isTaskInputFocused: $isTaskInputFocused,
-            onSubmit: { title, minutes, priority in
-                onAdd(title, minutes, priority)
-            }
-        )
-        Text("※ 5分・10分のタスクはタイムライン上で表示が崩れる場合があります")
-            .font(.system(size: 10))
-            .foregroundStyle(secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            TaskInputRow(
+                isSubscribed: isSubscribed,
+                title: $newTitle,
+                durationMinutes: $newDurationMinutes,
+                priority: $newPriority,
+                isTaskInputFocused: $isTaskInputFocused,
+                onSubmit: { title, minutes, priority in
+                    onAdd(title, minutes, priority)
+                }
+            )
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+//        .background(.ultraThinMaterial)
     }
 
     private var editingItemBinding: Binding<TimelineItem?> {

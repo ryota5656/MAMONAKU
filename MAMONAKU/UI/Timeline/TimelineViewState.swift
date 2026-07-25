@@ -69,9 +69,9 @@ enum TaskSheetPresentation {
     static let medium = PresentationDetent.fraction(0.45)
     static let expanded = PresentationDetent.large
 
-    /// 展開シートで使う detent（下にドラッグしてピークへ戻れる）
+    /// 展開シートで使う detent（ピークはシート非表示＋オーバーレイ側。ここに含めると閉じる時に二重アニメでタイムラインが揺れる）
     static var expandedSheetDetents: Set<PresentationDetent> {
-        [peek, medium, expanded]
+        [medium, expanded]
     }
 }
 

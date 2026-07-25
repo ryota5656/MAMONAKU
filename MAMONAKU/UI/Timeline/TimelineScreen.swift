@@ -11,14 +11,14 @@ struct TimelineScreen: View {
             viewModel: viewModel,
             delegate: viewModel
         )
-        .safeAreaInset(edge: .bottom, spacing: TaskSheetPresentation.peekBottomGap) {
-            if showsPeekCard {
-                taskSheetPeekCard
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+        // ピークカード分の下余白は常に確保し、シート開閉でタイムライン高さが変わらないようにする
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            taskSheetPeekCard
+                .opacity(showsPeekCard ? 1 : 0)
+                .allowsHitTesting(showsPeekCard)
+                .accessibilityHidden(!showsPeekCard)
         }
         .ignoresSafeArea(.keyboard)
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.state.taskSheetDetent)
         .onPreferenceChange(HeaderHeightKey.self) { value in
             viewModel.state.headerHeight = value
         }
@@ -51,6 +51,7 @@ struct TimelineScreen: View {
             }
         )
         .padding(.horizontal, 16)
+        .padding(.bottom, TaskSheetPresentation.peekBottomGap)
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
@@ -59,7 +60,8 @@ struct TimelineScreen: View {
             .presentationDetents(taskSheetDetents, selection: sheetDetentBinding)
             .presentationDragIndicator(taskSheetDragIndicator)
             .presentationBackgroundInteraction(.enabled)
-            .interactiveDismissDisabled(true)
+            // ピークへ戻すのはシート dismiss。peek detent を挟むと閉じる時に背景が揺れる
+            .interactiveDismissDisabled(!viewModel.state.isTaskSheetDraggable)
     }
 
     private var taskListSheetView: some View {
@@ -125,7 +127,14 @@ struct TimelineScreen: View {
 
     private var sheetDetentBinding: Binding<PresentationDetent> {
         Binding(
-            get: { viewModel.state.taskSheetDetent },
+            get: {
+                let detent = viewModel.state.taskSheetDetent
+                // シート表示中は peek を medium に丸め、不正な selection を避ける
+                if detent == TaskSheetPresentation.peek {
+                    return TaskSheetPresentation.medium
+                }
+                return detent
+            },
             set: { viewModel.state.taskSheetDetent = $0 }
         )
     }

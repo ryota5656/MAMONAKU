@@ -3,6 +3,7 @@ import UIKit
 
 /// ピーク時にタイムライン上へ浮かせて表示する Stock カード（シート外）
 /// タイムライン上のアイテムをここにドロップするとタスクリストへ戻す。
+/// TabView の Liquid Glass タブバーに合わせた半透明ガラス表現。
 struct TaskListPeekCardView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeManager: ThemeManager
@@ -14,6 +15,8 @@ struct TaskListPeekCardView: View {
     let heightForDuration: (Int) -> CGFloat
     let onExpand: () -> Void
     let onReturnToStock: (UUID) -> Void
+
+    private let cardShape = RoundedRectangle(cornerRadius: 28, style: .continuous)
 
     private var stockTasks: [TimelineItem] {
         items.filter { $0.dropDate == nil }
@@ -28,7 +31,6 @@ struct TaskListPeekCardView: View {
     var body: some View {
         let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
         let primary = AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
-        let cardBackground = AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme)
         let accent = AppColors.accent(palette: themeManager.theme, environmentScheme: colorScheme)
 
         VStack(spacing: 10) {
@@ -53,8 +55,8 @@ struct TaskListPeekCardView: View {
                             .foregroundStyle(secondary)
                     }
                 }
-                .padding(.top, 4)
-                .padding(.bottom, 4)
+                .padding(.top, 2)
+                .padding(.bottom, 2)
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
             }
@@ -77,37 +79,23 @@ struct TaskListPeekCardView: View {
                                 heightForDuration: heightForDuration
                             )
                         }
-
-//                        if stockTasks.count > 3 {
-//                            Text("+\(stockTasks.count - 3)")
-//                                .font(.system(size: 13, weight: .semibold))
-//                                .foregroundStyle(secondary)
-//                                .padding(.horizontal, 12)
-//                                .padding(.vertical, 7)
-//                                .background(
-//                                    Capsule(style: .continuous)
-//                                        .strokeBorder(secondary.opacity(0.35), lineWidth: 1)
-//                                )
-//                        }
                     }
                 }
                 .allowsHitTesting(!isDraggingPlacedItem)
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(cardBackground)
-                .shadow(color: Color.black.opacity(0.15), radius: 16, x: 0, y: 6)
+        .padding(.vertical, 12)
+        .modifier(
+            PeekCardLiquidGlassBackground(
+                shape: cardShape,
+                isDropTargeted: isSheetDropTargeted,
+                accent: accent
+            )
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .strokeBorder(accent.opacity(isSheetDropTargeted ? 0.9 : 0), lineWidth: 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .fill(accent.opacity(isSheetDropTargeted ? 0.12 : 0))
-                )
+            cardShape
+                .strokeBorder(accent.opacity(isSheetDropTargeted ? 0.55 : 0), lineWidth: 1.5)
                 .animation(.easeInOut(duration: 0.15), value: isSheetDropTargeted)
                 .allowsHitTesting(false)
         }
@@ -136,19 +124,57 @@ struct TaskListPeekCardView: View {
     }
 }
 
+/// TabView と同系の Liquid Glass。iOS 26 未満は Material で近似する。
+private struct PeekCardLiquidGlassBackground: ViewModifier {
+    let shape: RoundedRectangle
+    let isDropTargeted: Bool
+    let accent: Color
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(
+                isDropTargeted ? .regular.tint(accent.opacity(0.35)) : .regular,
+                in: shape
+            )
+        } else {
+            content
+                .background {
+                    shape
+                        .fill(.ultraThinMaterial)
+                        .shadow(color: Color.black.opacity(0.12), radius: 16, x: 0, y: 6)
+                }
+                .background {
+                    if isDropTargeted {
+                        shape.fill(accent.opacity(0.12))
+                    }
+                }
+        }
+    }
+}
+
 #Preview("TaskListPeekCardView") {
-    TaskListPeekCardView(
-        items: [
-            TimelineItem(title: "買い物", durationMinutes: 30),
-            TimelineItem(title: "読書", durationMinutes: 45)
-        ],
-        isDraggingTask: .constant(false),
-        isSheetDropTargeted: .constant(false),
-        dragItemID: .constant(nil),
-        heightForDuration: { CGFloat($0) / 60 * 80 },
-        onExpand: {},
-        onReturnToStock: { _ in }
-    )
-    .padding(.horizontal, 16)
+    ZStack {
+        LinearGradient(
+            colors: [Color.blue.opacity(0.35), Color.purple.opacity(0.25), Color.orange.opacity(0.2)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+
+        TaskListPeekCardView(
+            items: [
+                TimelineItem(title: "買い物", durationMinutes: 30),
+                TimelineItem(title: "読書", durationMinutes: 45)
+            ],
+            isDraggingTask: .constant(false),
+            isSheetDropTargeted: .constant(false),
+            dragItemID: .constant(nil),
+            heightForDuration: { CGFloat($0) / 60 * 80 },
+            onExpand: {},
+            onReturnToStock: { _ in }
+        )
+        .padding(.horizontal, 16)
+    }
     .environmentObject(ThemeManager())
 }
