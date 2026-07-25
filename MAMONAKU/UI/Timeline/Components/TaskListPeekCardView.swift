@@ -13,8 +13,16 @@ struct TaskListPeekCardView: View {
     @Binding var isSheetDropTargeted: Bool
     @Binding var dragItemID: UUID?
     let heightForDuration: (Int) -> CGFloat
+    let isSubscribed: Bool
     let onExpand: () -> Void
     let onReturnToStock: (UUID) -> Void
+    let onCreate: (_ title: String, _ durationMinutes: Int, _ priority: TaskPriority, _ startDate: Date?, _ endDate: Date?) -> Void
+    let onUpdate: (_ id: UUID, _ title: String, _ durationMinutes: Int, _ priority: TaskPriority) -> Void
+    let onDelete: (_ id: UUID) -> Void
+    let onReorderStock: (_ from: IndexSet, _ to: Int) -> Void
+
+    @State private var isCreateSheetPresented = false
+    @State private var editingItemID: UUID?
 
     private let cardShape = RoundedRectangle(cornerRadius: 28, style: .continuous)
 
@@ -34,7 +42,10 @@ struct TaskListPeekCardView: View {
         let accent = AppColors.accent(palette: themeManager.theme, environmentScheme: colorScheme)
 
         VStack(spacing: 10) {
-            Button(action: onExpand) {
+            Button {
+                isCreateSheetPresented = true
+                onExpand()
+            } label: {
                 HStack(spacing: 8) {
                     Text(isSheetDropTargeted ? "タスクリストへ戻す" : "Stock")
                         .font(.system(size: 16, weight: .semibold))
@@ -50,7 +61,7 @@ struct TaskListPeekCardView: View {
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(secondary)
                         }
-                        Image(systemName: "chevron.up")
+                        Image(systemName: "plus")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(secondary)
                     }
@@ -63,26 +74,36 @@ struct TaskListPeekCardView: View {
             .buttonStyle(.plain)
             .allowsHitTesting(!isDraggingPlacedItem)
 
-            if stockTasks.isEmpty {
-                Text(isSheetDropTargeted ? "ここにドロップ" : "タスクがありません")
-                    .font(.system(size: 12))
-                    .foregroundStyle(isSheetDropTargeted ? accent : secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(stockTasks.prefix(20)) { item in
-                            TaskStockPeekChipView(
-                                item: item,
-                                isDraggingTask: $isDraggingTask,
-                                dragItemID: $dragItemID,
-                                heightForDuration: heightForDuration
-                            )
-                        }
+            // 空↔1件で View を差し替えると UICollectionView が再生成され、
+            // 初回セルがレイアウトされないことがあるため常にマウントする
+            ZStack(alignment: .leading) {
+                HorizontalStockChipList(
+                    items: stockTasks,
+                    isDraggingTask: $isDraggingTask,
+                    dragItemID: $dragItemID,
+                    heightForDuration: heightForDuration,
+                    themeManager: themeManager,
+                    colorScheme: colorScheme,
+                    onTap: { item in
+                        editingItemID = item.id
+                    },
+                    onReorder: { from, to in
+                        onReorderStock(from, to)
                     }
+                )
+                .opacity(stockTasks.isEmpty ? 0 : 1)
+                .allowsHitTesting(!stockTasks.isEmpty && !isDraggingPlacedItem)
+
+                if stockTasks.isEmpty {
+                    Text(isSheetDropTargeted ? "ここにドロップ" : "タスクがありません")
+                        .font(.system(size: 12))
+                        .foregroundStyle(isSheetDropTargeted ? accent : secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .allowsHitTesting(!isDraggingPlacedItem)
             }
+            .frame(maxWidth: .infinity)
+            .frame(height: 40)
+            .clipped()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -93,6 +114,7 @@ struct TaskListPeekCardView: View {
                 accent: accent
             )
         )
+        .clipShape(cardShape)
         .overlay {
             cardShape
                 .strokeBorder(accent.opacity(isSheetDropTargeted ? 0.55 : 0), lineWidth: 1.5)
@@ -121,6 +143,45 @@ struct TaskListPeekCardView: View {
             )
         }
         .ignoresSafeArea(.keyboard)
+        .sheet(isPresented: $isCreateSheetPresented) {
+            TaskCreateSheetView(
+                isSubscribed: isSubscribed,
+                onCancel: { isCreateSheetPresented = false },
+                onCreate: { title, durationMinutes, priority, startDate, endDate in
+                    onCreate(title, durationMinutes, priority, startDate, endDate)
+                    isCreateSheetPresented = false
+                }
+            )
+            .environmentObject(themeManager)
+        }
+        .sheet(item: editingItemBinding) { item in
+            TaskEditSheetView(
+                item: item,
+                isSubscribed: isSubscribed,
+                onCancel: { editingItemID = nil },
+                onSave: { title, durationMinutes, priority in
+                    onUpdate(item.id, title, durationMinutes, priority)
+                    editingItemID = nil
+                },
+                onDelete: {
+                    onDelete(item.id)
+                    editingItemID = nil
+                }
+            )
+            .environmentObject(themeManager)
+        }
+    }
+
+    private var editingItemBinding: Binding<TimelineItem?> {
+        Binding(
+            get: {
+                guard let editingItemID else { return nil }
+                return items.first(where: { $0.id == editingItemID })
+            },
+            set: { item in
+                editingItemID = item?.id
+            }
+        )
     }
 }
 
@@ -171,8 +232,13 @@ private struct PeekCardLiquidGlassBackground: ViewModifier {
             isSheetDropTargeted: .constant(false),
             dragItemID: .constant(nil),
             heightForDuration: { CGFloat($0) / 60 * 80 },
+            isSubscribed: true,
             onExpand: {},
-            onReturnToStock: { _ in }
+            onReturnToStock: { _ in },
+            onCreate: { _, _, _, _, _ in },
+            onUpdate: { _, _, _, _ in },
+            onDelete: { _ in },
+            onReorderStock: { _, _ in }
         )
         .padding(.horizontal, 16)
     }

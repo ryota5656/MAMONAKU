@@ -101,6 +101,10 @@ struct TaskListSheetView: View {
                 onSave: { title, durationMinutes, priority in
                     onUpdate(item.id, title, durationMinutes, isSubscribed ? priority : .low)
                     editingItemID = nil
+                },
+                onDelete: {
+                    onDelete(item.id)
+                    editingItemID = nil
                 }
             )
             .environmentObject(themeManager)
@@ -248,8 +252,13 @@ struct TaskListSheetView: View {
         isSheetDropTargeted: .constant(false),
         dragItemID: .constant(nil),
         heightForDuration: { CGFloat($0) / 60 * 80 },
+        isSubscribed: true,
         onExpand: {},
-        onReturnToStock: { _ in }
+        onReturnToStock: { _ in },
+        onCreate: { _, _, _, _, _ in },
+        onUpdate: { _, _, _, _ in },
+        onDelete: { _ in },
+        onReorderStock: { _, _ in }
     )
     .environmentObject(ThemeManager())
 }

@@ -45,9 +45,33 @@ struct TimelineScreen: View {
             isSheetDropTargeted: isSheetDropTargetedBinding,
             dragItemID: $viewModel.dragItemID,
             heightForDuration: { viewModel.heightForDuration($0) },
+            isSubscribed: subscriptionManager.effectiveIsSubscribed,
             onExpand: expandTaskSheetFromPeek,
             onReturnToStock: { id in
                 viewModel.returnItemToStock(id: id)
+            },
+            onCreate: { title, durationMinutes, priority, startDate, endDate in
+                viewModel.createItem(
+                    title: title,
+                    durationMinutes: durationMinutes,
+                    priority: priority,
+                    startDate: startDate,
+                    endDate: endDate
+                )
+            },
+            onUpdate: { id, title, durationMinutes, priority in
+                viewModel.updateItemDetails(
+                    id: id,
+                    title: title,
+                    durationMinutes: durationMinutes,
+                    priority: priority
+                )
+            },
+            onDelete: { id in
+                viewModel.deleteItem(id: id)
+            },
+            onReorderStock: { from, to in
+                viewModel.moveTaskItems(from: from, to: to)
             }
         )
         .padding(.horizontal, 16)
@@ -160,7 +184,8 @@ struct TimelineScreen: View {
     }
 
     private func expandTaskSheetFromPeek() {
-        viewModel.state.taskSheetDetent = TaskSheetPresentation.medium
+        // ピークタップでは TaskListSheet を開かず、作成モーダルを TaskListPeekCardView 側で表示する
+        // viewModel.state.taskSheetDetent = TaskSheetPresentation.medium
     }
 
     private func addDebugTask(minutes: Int) {

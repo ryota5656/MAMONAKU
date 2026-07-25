@@ -1,4 +1,12 @@
 import SwiftUI
+import UniformTypeIdentifiers
+
+enum TaskStockPeekChipInteractionStyle {
+    /// SwiftUI の onDrag / onDrop を使う（従来の ScrollView 用）
+    case dragAndDrop
+    /// 見た目のみ。DnD は UICollectionView 側で扱う
+    case displayOnly
+}
 
 struct TaskStockPeekChipView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -8,11 +16,27 @@ struct TaskStockPeekChipView: View {
     @Binding var isDraggingTask: Bool
     @Binding var dragItemID: UUID?
     let heightForDuration: (Int) -> CGFloat
+    var onTap: (() -> Void)? = nil
+    var onReorderDrop: ((UUID) -> Void)? = nil
+    var interactionStyle: TaskStockPeekChipInteractionStyle = .dragAndDrop
 
     var body: some View {
         let primary = AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
         let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
 
+        chipContent(primary: primary, secondary: secondary)
+            .modifier(ChipInteractionModifier(
+                style: interactionStyle,
+                item: item,
+                isDraggingTask: $isDraggingTask,
+                dragItemID: $dragItemID,
+                heightForDuration: heightForDuration,
+                onTap: onTap,
+                onReorderDrop: onReorderDrop
+            ))
+    }
+
+    private func chipContent(primary: Color, secondary: Color) -> some View {
         HStack(spacing: 6) {
             PriorityIconView(priority: item.priority, color: priorityIconColor, size: 13)
 
@@ -43,13 +67,7 @@ struct TaskStockPeekChipView: View {
                 }
                 .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
         }
-        .onDrag {
-            isDraggingTask = true
-            dragItemID = item.id
-            return NSItemProvider(object: item.id.uuidString as NSString)
-        } preview: {
-            TaskDragPreview(item: item, height: heightForDuration(item.durationMinutes))
-        }
+        .contentShape(Capsule())
     }
 
     /// Liquid Glass 上でも沈まない、明るいフロスト面
@@ -84,6 +102,48 @@ struct TaskStockPeekChipView: View {
             return AppColors.accent(palette: themeManager.theme, environmentScheme: colorScheme)
         case .high:
             return AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme)
+        }
+    }
+}
+
+private struct ChipInteractionModifier: ViewModifier {
+    let style: TaskStockPeekChipInteractionStyle
+    let item: TimelineItem
+    @Binding var isDraggingTask: Bool
+    @Binding var dragItemID: UUID?
+    let heightForDuration: (Int) -> CGFloat
+    var onTap: (() -> Void)?
+    var onReorderDrop: ((UUID) -> Void)?
+
+    func body(content: Content) -> some View {
+        switch style {
+        case .displayOnly:
+            content
+        case .dragAndDrop:
+            content
+                .onTapGesture {
+                    onTap?()
+                }
+                .onDrag {
+                    isDraggingTask = true
+                    dragItemID = item.id
+                    return NSItemProvider(object: item.id.uuidString as NSString)
+                } preview: {
+                    TaskDragPreview(item: item, height: heightForDuration(item.durationMinutes))
+                }
+                .onDrop(of: [UTType.text], isTargeted: nil) { providers in
+                    guard let onReorderDrop else { return false }
+                    guard let provider = providers.first else { return false }
+                    _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+                        guard let raw = object as? String,
+                              let id = UUID(uuidString: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+                        else { return }
+                        DispatchQueue.main.async {
+                            onReorderDrop(id)
+                        }
+                    }
+                    return true
+                }
         }
     }
 }

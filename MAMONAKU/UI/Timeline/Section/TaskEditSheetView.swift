@@ -7,21 +7,24 @@ struct TaskEditSheetView: View {
     let isSubscribed: Bool
     let onCancel: () -> Void
     let onSave: (String, Int, TaskPriority) -> Void
+    let onDelete: () -> Void
     @State private var title: String
     @State private var durationMinutes: Int
     @State private var priority: TaskPriority
-    @FocusState private var isTitleFocused: Bool
+    @State private var isDeleteConfirmationPresented = false
 
     init(
         item: TimelineItem,
         isSubscribed: Bool,
         onCancel: @escaping () -> Void,
-        onSave: @escaping (String, Int, TaskPriority) -> Void
+        onSave: @escaping (String, Int, TaskPriority) -> Void,
+        onDelete: @escaping () -> Void
     ) {
         self.item = item
         self.isSubscribed = isSubscribed
         self.onCancel = onCancel
         self.onSave = onSave
+        self.onDelete = onDelete
         _title = State(initialValue: item.title)
         _durationMinutes = State(initialValue: item.durationMinutes)
         _priority = State(initialValue: isSubscribed ? item.priority : .low)
@@ -36,7 +39,6 @@ struct TaskEditSheetView: View {
             Form {
                 Section("タスク") {
                     TextField("タイトル", text: $title)
-                        .focused($isTitleFocused)
                         .submitLabel(.done)
 
                     Picker("時間", selection: $durationMinutes) {
@@ -69,7 +71,10 @@ struct TaskEditSheetView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル", action: onCancel)
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItemGroup(placement: .confirmationAction) {
+                    Button("削除", role: .destructive) {
+                        isDeleteConfirmationPresented = true
+                    }
                     Button("保存") {
                         onSave(
                             title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -80,9 +85,14 @@ struct TaskEditSheetView: View {
                     .disabled(!canSave)
                 }
             }
+            .alert("タスクを削除", isPresented: $isDeleteConfirmationPresented) {
+                Button("削除", role: .destructive, action: onDelete)
+                Button("キャンセル", role: .cancel) {}
+            } message: {
+                Text("「\(item.title)」を削除しますか？この操作は取り消せません。")
+            }
         }
         .presentationDetents([.medium])
-        .onAppear { isTitleFocused = true }
     }
 }
 
@@ -91,7 +101,8 @@ struct TaskEditSheetView: View {
         item: TimelineItem(title: "編集テスト", durationMinutes: 30, startMinutes: nil, dropDate: nil, priority: .high),
         isSubscribed: true,
         onCancel: {},
-        onSave: { _, _, _ in }
+        onSave: { _, _, _ in },
+        onDelete: {}
     )
     .environmentObject(ThemeManager())
 }
@@ -101,8 +112,8 @@ struct TaskEditSheetView: View {
         item: TimelineItem(title: "編集テスト", durationMinutes: 30, startMinutes: nil, dropDate: nil, priority: .high),
         isSubscribed: false,
         onCancel: {},
-        onSave: { _, _, _ in }
+        onSave: { _, _, _ in },
+        onDelete: {}
     )
     .environmentObject(ThemeManager())
 }
-

@@ -303,6 +303,45 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         persistItems()
     }
 
+    /// 作成モーダルから追加。start/end がある場合はタイムラインに配置、なければ Stock へ。
+    func createItem(
+        title: String,
+        durationMinutes: Int,
+        priority: TaskPriority,
+        startDate: Date?,
+        endDate: Date?
+    ) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+
+        if let startDate, let endDate, endDate > startDate {
+            let cal = Calendar.current
+            let startOfDay = cal.startOfDay(for: startDate)
+            let startMinutes = Int(startDate.timeIntervalSince(startOfDay) / 60)
+            let rawDuration = Int(endDate.timeIntervalSince(startDate) / 60)
+            let snappedDuration = max(5, (rawDuration / 5) * 5)
+            let finalDuration = clampDuration(start: startMinutes, duration: snappedDuration)
+            guard !isOverlapping(start: startMinutes, duration: finalDuration, excluding: nil, on: startOfDay) else {
+                // 重なる場合は Stock にフォールバック
+                addStockItem(title: trimmedTitle, durationMinutes: finalDuration, priority: priority)
+                return
+            }
+            items.append(
+                TimelineItem(
+                    title: trimmedTitle,
+                    durationMinutes: finalDuration,
+                    startMinutes: startMinutes,
+                    dropDate: startOfDay,
+                    priority: priority
+                )
+            )
+            persistItems()
+            return
+        }
+
+        addStockItem(title: trimmedTitle, durationMinutes: durationMinutes, priority: priority)
+    }
+
     // MARK: Resize - アイテムの時間変更
 
    // リサイズハンドル操作中の所要時間プレビューを更新する
