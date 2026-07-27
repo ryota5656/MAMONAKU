@@ -23,8 +23,8 @@ final class SubscriptionManager: ObservableObject {
         subscriptionLegacyProductID
     ]
     /// App Group の UserDefaults に書き出すキー（TimelineRepository のカレンダー同期判定で参照）
-    static let subscriptionStateUserDefaultsKey = "subscription_is_subscribed"
-    private static let appGroupID = "group.sairyo.MAMONAKU"
+    static let subscriptionStateUserDefaultsKey = AppGroup.subscriptionIsSubscribedKey
+    private static let appGroupID = AppGroup.id
 
     /// 加入中は true。未加入は優先度を Low のみで登録可能。StoreKit の currentEntitlements で更新。
     @Published private(set) var isSubscribed: Bool = false {
@@ -174,8 +174,22 @@ final class SubscriptionManager: ObservableObject {
                 case .verified(let transaction):
                     await transaction.finish()
                     await updateSubscriptionStatus()
+                    AnalyticsService.log(
+                        AnalyticsService.Event.subscriptionPurchase,
+                        parameters: [
+                            AnalyticsService.Param.productId: product.id,
+                            AnalyticsService.Param.success: 1
+                        ]
+                    )
                 case .unverified:
                     errorMessage = "検証に失敗しました"
+                    AnalyticsService.log(
+                        AnalyticsService.Event.subscriptionPurchase,
+                        parameters: [
+                            AnalyticsService.Param.productId: product.id,
+                            AnalyticsService.Param.success: 0
+                        ]
+                    )
                 }
             case .userCancelled:
                 break
@@ -186,6 +200,13 @@ final class SubscriptionManager: ObservableObject {
             }
         } catch {
             errorMessage = error.localizedDescription
+            AnalyticsService.log(
+                AnalyticsService.Event.subscriptionPurchase,
+                parameters: [
+                    AnalyticsService.Param.productId: product.id,
+                    AnalyticsService.Param.success: 0
+                ]
+            )
         }
     }
 

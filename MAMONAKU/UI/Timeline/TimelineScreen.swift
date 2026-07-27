@@ -27,7 +27,7 @@ struct TimelineScreen: View {
             viewModel.timelineDropPreviewDidChange(previewExists: preview != nil)
         }
         .onAppear {
-            viewModel.timelineDidAppear(ensureTutorialTask: ensureTutorialTaskExists)
+            viewModel.timelineDidAppear()
         }
         .onChange(of: viewModel.items) { _, _ in
             viewModel.timelineItemsDidChange(hasPlacedTutorialTaskAfterNow: hasPlacedTutorialTaskAfterNow)
@@ -46,7 +46,11 @@ struct TimelineScreen: View {
             dragItemID: $viewModel.dragItemID,
             heightForDuration: { viewModel.heightForDuration($0) },
             isSubscribed: subscriptionManager.effectiveIsSubscribed,
-            onExpand: expandTaskSheetFromPeek,
+            onExpand: {
+                expandTaskSheetFromPeek()
+                viewModel.timelineDidOpenCreateSheet()
+            },
+            isTutorialHighlighted: viewModel.state.tutorialStep == .touchStock,
             onReturnToStock: { id in
                 viewModel.returnItemToStock(id: id)
             },
@@ -195,17 +199,9 @@ struct TimelineScreen: View {
         )
     }
 
-    private func ensureTutorialTaskExists() {
-        let tutorialTitle = "はじめてのタスク"
-        let hasTutorialTask = viewModel.items.contains { $0.title == tutorialTitle }
-        guard !hasTutorialTask else { return }
-        viewModel.addStockItem(title: tutorialTitle, durationMinutes: 30, priority: .low)
-    }
-
     private func hasPlacedTutorialTaskAfterNow() -> Bool {
         let nowMinutes = viewModel.minutesSinceMidnight(date: Date())
         return viewModel.items.contains {
-            $0.title == "はじめてのタスク" &&
             $0.dropDate != nil &&
             ($0.startMinutes ?? -1) > nowMinutes
         }

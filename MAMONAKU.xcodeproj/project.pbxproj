@@ -23,6 +23,7 @@
 		7F2D7DCA30A3A0A97B1B0456 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 76CFE988B6F2025B2F771A3B /* FirebaseAuth */; };
 		E88822290C06732F6C2C7826 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 33E737EACCD19F46C6919FD0 /* GoogleService-Info.plist */; };
 		F3C6345485C3D69492A6D3CC /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 19301A969F42F6DF81910328 /* FirebaseMessaging */; };
+		F4431CA28E9C917E7990EE7D /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 4663BB9EAD023DE52506F685 /* FirebaseAnalytics */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -161,6 +162,7 @@
 				4BAB881B2F37934D00B75F3D /* RealmSwift in Frameworks */,
 				4B98BC3C2F5DCD76003D42C5 /* StoreKit.framework in Frameworks */,
 				4B43D34D300E68DA0087193B /* FirebaseFirestore in Frameworks */,
+				F4431CA28E9C917E7990EE7D /* FirebaseAnalytics in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -258,6 +260,7 @@
 				19301A969F42F6DF81910328 /* FirebaseMessaging */,
 				4B43D34C300E68DA0087193B /* FirebaseFirestore */,
 				4B43D34E300E68DA0087193B /* FirebaseFunctions */,
+				4663BB9EAD023DE52506F685 /* FirebaseAnalytics */,
 			);
 			productName = MAMONAKU;
 			productReference = 4BD9F7CD2F1D16EC0094BC8C /* MAMONAKU.app */;
@@ -980,6 +983,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 8AC433F677BFA57897060CEB /* XCRemoteSwiftPackageReference "Nimble" */;
 			productName = Nimble;
+		};
+		4663BB9EAD023DE52506F685 /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B0F19412FEE56C200637591 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
 		};
 		4B0F194D2FEE56C200637591 /* FirebaseCore */ = {
 			isa = XCSwiftPackageProductDependency;

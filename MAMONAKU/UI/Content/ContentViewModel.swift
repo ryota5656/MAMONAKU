@@ -67,6 +67,7 @@ final class ContentViewModel: ObservableObject {
         let hasSeenOnboarding = userDefaults.bool(forKey: Keys.hasSeenOnboarding)
         if !hasSeenOnboarding {
             userDefaults.set(true, forKey: Keys.hasSeenOnboarding)
+            AnalyticsService.log(AnalyticsService.Event.onboardingComplete)
         }
         if state.isOnboardingPresented {
             state.isOnboardingPresented = false

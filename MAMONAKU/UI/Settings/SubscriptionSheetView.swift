@@ -161,6 +161,7 @@ struct SubscriptionSheetView: View {
             }
         }
         .onAppear {
+            AnalyticsService.logScreen(AnalyticsService.Screen.subscription)
             applyDefaultSelectionIfNeeded(from: subscriptionManager.subscriptionProducts)
             Task {
                 await subscriptionManager.loadProducts()

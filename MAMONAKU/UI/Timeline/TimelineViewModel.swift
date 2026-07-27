@@ -101,15 +101,32 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
 
     // MARK: - TimelineDelegate
 
-    func timelineDidAppear(ensureTutorialTask: () -> Void) {
+    func timelineDidAppear() {
         state.isTaskSheetPresented = true
         state.taskSheetDetent = TaskSheetPresentation.peek
-        startFirstRunTutorialIfNeeded(ensureTutorialTask: ensureTutorialTask)
+        startFirstRunTutorialIfNeeded()
+    }
+
+    func timelineDidOpenCreateSheet() {
+        if state.tutorialStep == .touchStock {
+            state.tutorialStep = .createTaskWithTitle
+        }
     }
 
     func timelineItemsDidChange(hasPlacedTutorialTaskAfterNow: () -> Bool) {
-        if state.tutorialStep == .placeTaskAfterNow, hasPlacedTutorialTaskAfterNow() {
-            state.tutorialStep = .confirmCountdown
+        switch state.tutorialStep {
+        case .createTaskWithTitle:
+            if hasPlacedTutorialTaskAfterNow() {
+                state.tutorialStep = .confirmCountdown
+            } else if items.contains(where: { $0.dropDate == nil }) {
+                state.tutorialStep = .placeTaskAfterNow
+            }
+        case .placeTaskAfterNow:
+            if hasPlacedTutorialTaskAfterNow() {
+                state.tutorialStep = .confirmCountdown
+            }
+        default:
+            break
         }
     }
 
@@ -125,10 +142,7 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
     func timelineOpenTaskSheet() {
         state.isTaskSheetPresented = true
         state.taskSheetSelectedTab = .timeline
-        if state.tutorialStep == .openTaskList {
-            state.tutorialStep = .placeTaskAfterNow
-            state.taskSheetDetent = TaskSheetPresentation.medium
-        } else if sheetDetentIsCollapsed {
+        if sheetDetentIsCollapsed {
             state.taskSheetDetent = TaskSheetPresentation.medium
         }
     }
@@ -144,9 +158,19 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
 
     func timelineRefreshLiveActivityManually() async {
         guard !state.isLiveActivityRefreshing else { return }
+        // 未反映の変更がなければ通信せず終了する。
+        // チュートリアル最終ステップでは、操作体験のため同期を試みる。
+        let isTutorialLiveActivityStep = state.tutorialStep == .confirmLiveActivity
+        guard isTutorialLiveActivityStep
+                || state.isLiveActivitySyncPending
+                || LiveActivitySyncCoordinator.isPending else { return }
         let startedAt = Date()
         state.isLiveActivityRefreshing = true
         await commitPendingLiveActivitySync(force: true)
+        AnalyticsService.log(AnalyticsService.Event.liveActivityRefresh)
+        if isTutorialLiveActivityStep {
+            completeTutorial()
+        }
         let remainingDisplayTime = 1.0 - Date().timeIntervalSince(startedAt)
         if remainingDisplayTime > 0 {
             try? await Task.sleep(nanoseconds: UInt64(remainingDisplayTime * 1_000_000_000))
@@ -157,19 +181,16 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
     func timelineAdvanceTutorialStep() {
         guard let step = state.tutorialStep else { return }
         switch step {
-        case .openTaskList:
+        case .touchStock:
+            state.tutorialStep = .createTaskWithTitle
+        case .createTaskWithTitle:
             state.tutorialStep = .placeTaskAfterNow
         case .placeTaskAfterNow:
             state.tutorialStep = .confirmCountdown
         case .confirmCountdown:
-            state.tutorialStep = .explainLongPress
-        case .explainLongPress:
-            state.tutorialStep = .explainLiveActivityFromPlus
-        case .explainLiveActivityFromPlus:
-            state.tutorialStep = .explainSettingsAndSubscription
-        case .explainSettingsAndSubscription:
-            state.tutorialStep = nil
-            UserDefaults.standard.set(true, forKey: tutorialCompletedKey)
+            state.tutorialStep = .confirmLiveActivity
+        case .confirmLiveActivity:
+            completeTutorial()
         }
     }
 
@@ -198,14 +219,20 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         }
     }
 
-    private func startFirstRunTutorialIfNeeded(ensureTutorialTask: () -> Void) {
+    private func startFirstRunTutorialIfNeeded() {
         guard !isRunningInPreview else {
             state.tutorialStep = nil
             return
         }
         guard !UserDefaults.standard.bool(forKey: tutorialCompletedKey) else { return }
-        ensureTutorialTask()
-        state.tutorialStep = .openTaskList
+        state.tutorialStep = .touchStock
+        state.tutorialPulse = true
+    }
+
+    private func completeTutorial() {
+        state.tutorialStep = nil
+        state.tutorialPulse = false
+        UserDefaults.standard.set(true, forKey: tutorialCompletedKey)
     }
    // ストックのタスクをドロップ位置の時刻にタイムラインへ配置する
     func addItem(item: TimelineItem, dropY: CGFloat, on date: Date) {
@@ -301,6 +328,11 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
             )
         )
         persistItems()
+        AnalyticsService.logTaskCreate(
+            placement: "stock",
+            durationMinutes: durationMinutes,
+            priority: priority.displayName
+        )
     }
 
     /// 作成モーダルから追加。start/end がある場合はタイムラインに配置、なければ Stock へ。
@@ -336,6 +368,11 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
                 )
             )
             persistItems()
+            AnalyticsService.logTaskCreate(
+                placement: "timeline",
+                durationMinutes: finalDuration,
+                priority: priority.displayName
+            )
             return
         }
 
@@ -413,6 +450,7 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         items = repository.fetchItems()
         rescheduleTimelineNotifications()
         markLiveActivitySyncPending()
+        AnalyticsService.log(AnalyticsService.Event.taskDelete)
     }
 
    // タイムライン上のアイテムをストックに戻す（開始時刻・日付を解除）
@@ -436,6 +474,7 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         resizingItemID = nil
         items[index].isCompleted = true
         persistItems()
+        AnalyticsService.log(AnalyticsService.Event.taskComplete)
     }
 
    // タイムライン上のアイテムの完了を解除する（isCompleted = false）
@@ -844,12 +883,14 @@ extension TimelineViewModel {
             return nil
         }
 
-        let schedule = LiveActivityScheduleBuilder.buildTaskItems(
-            from: window,
-            now: now,
-            bufferMinutes: { [weak self] item in
-                self?.effectiveBufferMinutes(for: item)
-            }
+        let schedule = Array(
+            LiveActivityScheduleBuilder.buildTaskItems(
+                from: window,
+                now: now,
+                bufferMinutes: { [weak self] item in
+                    self?.effectiveBufferMinutes(for: item)
+                }
+            ).prefix(planScope.maxVisibleSlots)
         )
         let rotations = LiveActivityScheduleBuilder.buildRotations(
             entries: entries,
@@ -861,7 +902,7 @@ extension TimelineViewModel {
             }
         )
 
-        print("[LiveActivity] Plan scope: \(planScope == .plus ? "PLUS" : "free"), entries: \(entries.count), visible: \(schedule.count)")
+        print("[LiveActivity] Plan scope: \(planScope == .plus ? "PLUS" : "free"), entries: \(entries.count), visible: \(schedule.count), slots: \(planScope.maxVisibleSlots)")
 
         let staleDate = entries[startIndex].startDate
         await upsertStackLiveActivity(schedule: schedule, staleDate: staleDate)

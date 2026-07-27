@@ -2,7 +2,8 @@ import Foundation
 
 @MainActor
 protocol TimelineDelegate: AnyObject {
-    func timelineDidAppear(ensureTutorialTask: () -> Void)
+    func timelineDidAppear()
+    func timelineDidOpenCreateSheet()
     func timelineItemsDidChange(hasPlacedTutorialTaskAfterNow: () -> Bool)
     func timelineDropPreviewDidChange(previewExists: Bool)
     func timelineToggleHeaderExpanded()

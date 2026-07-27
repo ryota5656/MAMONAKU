@@ -15,6 +15,7 @@ struct TaskListPeekCardView: View {
     let heightForDuration: (Int) -> CGFloat
     let isSubscribed: Bool
     let onExpand: () -> Void
+    var isTutorialHighlighted: Bool = false
     let onReturnToStock: (UUID) -> Void
     let onCreate: (_ title: String, _ durationMinutes: Int, _ priority: TaskPriority, _ startDate: Date?, _ endDate: Date?) -> Void
     let onUpdate: (_ id: UUID, _ title: String, _ durationMinutes: Int, _ priority: TaskPriority) -> Void
@@ -23,6 +24,7 @@ struct TaskListPeekCardView: View {
 
     @State private var isCreateSheetPresented = false
     @State private var editingItemID: UUID?
+    @State private var tutorialHighlightPulse = false
 
     private let cardShape = RoundedRectangle(cornerRadius: 28, style: .continuous)
 
@@ -120,6 +122,23 @@ struct TaskListPeekCardView: View {
                 .strokeBorder(accent.opacity(isSheetDropTargeted ? 0.55 : 0), lineWidth: 1.5)
                 .animation(.easeInOut(duration: 0.15), value: isSheetDropTargeted)
                 .allowsHitTesting(false)
+        }
+        .overlay {
+            if isTutorialHighlighted {
+                cardShape
+                    .stroke(
+                        AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme),
+                        lineWidth: 3
+                    )
+                    .scaleEffect(tutorialHighlightPulse ? 1.03 : 1.0)
+                    .opacity(tutorialHighlightPulse ? 0.35 : 0.95)
+                    .animation(
+                        .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                        value: tutorialHighlightPulse
+                    )
+                    .allowsHitTesting(false)
+                    .onAppear { tutorialHighlightPulse = true }
+            }
         }
         .overlay {
             ItemDropTarget(

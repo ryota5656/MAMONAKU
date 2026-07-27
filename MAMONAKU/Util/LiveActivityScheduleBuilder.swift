@@ -1,10 +1,10 @@
 import Foundation
 
 /// 今日の予定から Live Activity 用スロットとローテーション予約を組み立てる。
-/// - free: 表示は最大1件。ローテーションで次の1件へ進める
+/// - free: 表示は常に最大1件。1件開始後は次の1件へローテーション（後続の同時スタック表示はしない）
 /// - plus: 表示は最大3件スタック
 enum LiveActivityScheduleBuilder {
-    /// 無料: 表示1件。PLUS: 最大3件スタック表示。
+    /// 無料: 1件ずつ表示（同時スタックなし）。PLUS: 最大3件スタック表示。
     enum PlanScope {
         case free
         case plus
@@ -37,8 +37,8 @@ enum LiveActivityScheduleBuilder {
     ) -> [ScheduledEntry] {
         let calendar = Calendar.current
         // プランに依らず当日の全配置予定を返す。
-        // 表示件数の制限は currentWindow / maxVisibleSlots 側で行う
-        //（無料も自動ローテーションで「次の1件」へ進めるため）。
+        // 無料も「次の1件」へローテーションするためエントリは全日分を保持し、
+        // 同時表示件数の制限だけ currentWindow / maxVisibleSlots で行う。
         _ = planScope
         return items
             .filter { item in
@@ -139,15 +139,19 @@ enum LiveActivityScheduleBuilder {
             }
 
             let nextIndex = index + 1
+            // free は常に1件、plus は最大3件。後続を同時表示しないよう slots で厳密に切る。
             let windowEnd = min(nextIndex + planScope.maxVisibleSlots, entries.count)
             let window = entries[nextIndex..<windowEnd]
-            let schedule = buildTaskItems(from: window, now: switchAt, bufferMinutes: bufferMinutes)
+            let schedule = Array(
+                buildTaskItems(from: window, now: switchAt, bufferMinutes: bufferMinutes)
+                    .prefix(planScope.maxVisibleSlots)
+            )
             rotations.append(
                 Rotation(
                     switchAt: switchAt,
                     schedule: schedule,
                     shouldEndActivity: false,
-                    reason: "next_event_countdown"
+                    reason: planScope == .free ? "free_next_single_event" : "next_event_countdown"
                 )
             )
         }

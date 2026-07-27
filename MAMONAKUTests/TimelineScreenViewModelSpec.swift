@@ -16,10 +16,10 @@ final class TimelineScreenViewModelSpec: QuickSpec {
                 let vm = MainActor.assumeIsolated { makeViewModel() }
 
                 MainActor.assumeIsolated {
-                    vm.timelineDidAppear(ensureTutorialTask: {})
+                    vm.timelineDidAppear()
                 }
 
-                expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.openTaskList))
+                expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.touchStock))
             }
 
             it("advances tutorial steps") {
@@ -27,7 +27,12 @@ final class TimelineScreenViewModelSpec: QuickSpec {
                 let vm = MainActor.assumeIsolated { makeViewModel() }
 
                 MainActor.assumeIsolated {
-                    vm.timelineDidAppear(ensureTutorialTask: {})
+                    vm.timelineDidAppear()
+                    vm.timelineAdvanceTutorialStep()
+                }
+                expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.createTaskWithTitle))
+
+                MainActor.assumeIsolated {
                     vm.timelineAdvanceTutorialStep()
                 }
                 expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.placeTaskAfterNow))
@@ -36,17 +41,34 @@ final class TimelineScreenViewModelSpec: QuickSpec {
                     vm.timelineAdvanceTutorialStep()
                 }
                 expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.confirmCountdown))
+
+                MainActor.assumeIsolated {
+                    vm.timelineAdvanceTutorialStep()
+                }
+                expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.confirmLiveActivity))
             }
 
-            it("opens task sheet and advances from openTaskList") {
+            it("opens create sheet and advances from touchStock") {
                 UserDefaults.standard.set(false, forKey: "tutorial.firstRun.completed")
                 let vm = MainActor.assumeIsolated { makeViewModel() }
                 MainActor.assumeIsolated {
-                    vm.timelineDidAppear(ensureTutorialTask: {})
-                    vm.timelineOpenTaskSheet()
+                    vm.timelineDidAppear()
+                    vm.timelineDidOpenCreateSheet()
                 }
 
-                expect(MainActor.assumeIsolated { vm.state.isTaskSheetPresented }).to(beTrue())
+                expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.createTaskWithTitle))
+            }
+
+            it("advances to placeTaskAfterNow when a stock task is created") {
+                UserDefaults.standard.set(false, forKey: "tutorial.firstRun.completed")
+                let vm = MainActor.assumeIsolated { makeViewModel() }
+                MainActor.assumeIsolated {
+                    vm.timelineDidAppear()
+                    vm.timelineDidOpenCreateSheet()
+                    vm.addStockItem(title: "テスト", durationMinutes: 30)
+                    vm.timelineItemsDidChange(hasPlacedTutorialTaskAfterNow: { false })
+                }
+
                 expect(MainActor.assumeIsolated { vm.state.tutorialStep }).to(equal(.placeTaskAfterNow))
             }
         }

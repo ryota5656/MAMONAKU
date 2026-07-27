@@ -80,7 +80,12 @@ final class TimelineFirestoreSyncService {
 
         let deviceId = LiveActivityPushService.shared.resolvedDeviceID()
         try await LiveActivityPushService.shared.waitForRequiredPushTokens(timeoutSeconds: 15)
-        try await upsertDeviceTokens(uid: uid, deviceId: deviceId, batch: batch)
+        try await upsertDeviceTokens(
+            uid: uid,
+            deviceId: deviceId,
+            maxVisibleSlots: maxVisibleSlots,
+            batch: batch
+        )
 
         let rebuildRef = db.collection("users").document(uid)
             .collection("liveActivityCommands")
@@ -101,7 +106,12 @@ final class TimelineFirestoreSyncService {
         print("[TimelineFirestoreSync] Synced \(eligible.count) schedules, rebuild requested (slots=\(maxVisibleSlots))")
     }
 
-    private func upsertDeviceTokens(uid: String, deviceId: String, batch: WriteBatch) async throws {
+    private func upsertDeviceTokens(
+        uid: String,
+        deviceId: String,
+        maxVisibleSlots: Int,
+        batch: WriteBatch
+    ) async throws {
         guard
             let fcmToken = LiveActivityPushService.shared.currentFCMToken,
             let liveActivityToken = LiveActivityPushService.shared.currentLiveActivityUpdateToken
@@ -109,6 +119,8 @@ final class TimelineFirestoreSyncService {
             throw SyncError.missingPushTokens
         }
         let apnsTopic = LiveActivityPushService.apnsTopic
+        // 無料は1・PLUSスタックは最大3。rotation 実行時にこの値が使われるため同期時点で書き込む。
+        let clampedSlots = min(max(maxVisibleSlots, 1), 3)
 
         let deviceRef = db.collection("users").document(uid).collection("devices").document(deviceId)
         batch.setData(
@@ -116,6 +128,7 @@ final class TimelineFirestoreSyncService {
                 "fcmToken": fcmToken,
                 "liveActivityToken": liveActivityToken,
                 "apnsTopic": apnsTopic,
+                "maxVisibleSlots": clampedSlots,
                 "updatedAt": FieldValue.serverTimestamp(),
             ],
             forDocument: deviceRef,
@@ -129,12 +142,13 @@ final class TimelineFirestoreSyncService {
                 "fcmToken": fcmToken,
                 "liveActivityToken": liveActivityToken,
                 "apnsTopic": apnsTopic,
+                "maxVisibleSlots": clampedSlots,
                 "updatedAt": FieldValue.serverTimestamp(),
             ],
             forDocument: laDeviceRef,
             merge: true
         )
-        print("[TimelineFirestoreSync] Device tokens upserted (fcm=\(fcmToken.prefix(8))… la=\(liveActivityToken.prefix(8))…)")
+        print("[TimelineFirestoreSync] Device tokens upserted (fcm=\(fcmToken.prefix(8))… la=\(liveActivityToken.prefix(8))… slots=\(clampedSlots))")
     }
 
     private func resolveUID() async -> String? {

@@ -24,33 +24,35 @@ struct TimelineViewState: Equatable {
 }
 
 enum TimelineTutorialStep: Equatable {
-    case openTaskList
+    /// Stock をタップして作成画面を開く
+    case touchStock
+    /// タイトルを入れてタスクを作成する
+    case createTaskWithTitle
+    /// Stock から現在時刻より後へドラッグ＆ドロップ
     case placeTaskAfterNow
+    /// カウントダウン開始を確認
     case confirmCountdown
-    case explainLongPress
-    case explainLiveActivityFromPlus
-    case explainSettingsAndSubscription
+    /// 更新ボタンで Live Activity をロック画面に出す
+    case confirmLiveActivity
 
     var message: String {
         switch self {
-        case .openTaskList:
-            return "まずは右下の＋ボタンをタップして、タスクリストを開きましょう。"
+        case .touchStock:
+            return "下の Stock をタップすると、タスクを作成できます。"
+        case .createTaskWithTitle:
+            return "タイトルを入力して、タスクを作成しましょう。"
         case .placeTaskAfterNow:
-            return "「はじめてのタスク」をドラッグして、現在時刻より後のタイムラインへ置いてみましょう。"
+            return "Stock のタスクをドラッグして、現在時刻より後のタイムラインへ置いてみましょう。"
         case .confirmCountdown:
-            return "残り時間が表示されることを確認できました。次へ進みましょう。"
-        case .explainLongPress:
-            return "タイムライン上を長押しすると、その位置に新しいアイテムをすぐ置けます。"
-        case .explainLiveActivityFromPlus:
-            return "編集が終わったら、＋を長押しして上にスライドするとロック画面の予定を更新できます。アプリを閉じると自動で反映されます。"
-        case .explainSettingsAndSubscription:
-            return "最後に日付の左側にある設定アイコンを確認しましょう。ここからテーマ変更やサブスク特典を確認でき、加入いただけると複数の予定を見やすく表示できます。"
+            return "カウントダウンが始まりました。残り時間が表示されることを確認しましょう。"
+        case .confirmLiveActivity:
+            return "右下の更新ボタンを押して、ロック画面に Live Activity が表示されることを確認しましょう。"
         }
     }
 
     var primaryButtonTitle: String {
         switch self {
-        case .explainSettingsAndSubscription:
+        case .confirmLiveActivity:
             return "チュートリアル完了"
         default:
             return "次へ"

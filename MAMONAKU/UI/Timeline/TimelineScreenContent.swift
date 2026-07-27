@@ -15,7 +15,7 @@ struct TimelineScreenContent: View {
             headerSection
             whiteSheetSection
         }
-//        .overlay(alignment: .top) { tutorialTopOverlay }
+        .overlay(alignment: .top) { tutorialTopOverlay }
 //        .overlay(alignment: .top) { liveActivityPendingBanner }
         .overlay { liveActivityLoadingOverlay }
 //        .overlay(alignment: .bottomLeading) { leftBottomOverlay }
@@ -42,7 +42,7 @@ struct TimelineScreenContent: View {
                 get: { viewModel.state.sheetHeight },
                 set: { viewModel.state.sheetHeight = $0 }
             ),
-            isSettingsHighlighted: state.tutorialStep == .explainSettingsAndSubscription,
+            isSettingsHighlighted: false,
             onOpenSettings: {
                 delegate?.timelineOpenSettings()
             }
@@ -215,13 +215,12 @@ struct TimelineScreenContent: View {
             }
         }
         .overlay {
-            if state.tutorialStep == .openTaskList || state.tutorialStep == .explainLiveActivityFromPlus {
+            if state.tutorialStep == .confirmLiveActivity {
                 Circle()
                     .stroke(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme), lineWidth: 3)
                     .scaleEffect(state.tutorialPulse ? 1.35 : 1.05)
                     .opacity(state.tutorialPulse ? 0.2 : 0.9)
                     .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: state.tutorialPulse)
-                    .onAppear { viewModel.state.tutorialPulse = true }
             }
         }
         .contentShape(Circle())
@@ -302,7 +301,8 @@ private extension View {
 // MARK: - Previews / Mock
 
 final class PreviewTimelineDelegate: TimelineDelegate {
-    func timelineDidAppear(ensureTutorialTask: () -> Void) { ensureTutorialTask() }
+    func timelineDidAppear() {}
+    func timelineDidOpenCreateSheet() {}
     func timelineItemsDidChange(hasPlacedTutorialTaskAfterNow: () -> Bool) {}
     func timelineDropPreviewDidChange(previewExists: Bool) {}
     func timelineToggleHeaderExpanded() {}
@@ -333,7 +333,7 @@ final class PreviewTimelineDelegate: TimelineDelegate {
 
 #Preview("チュートリアル表示") {
     TimelineScreenContent(
-        state: TimelineViewState(tutorialStep: .openTaskList),
+        state: TimelineViewState(tutorialStep: .touchStock),
         viewModel: TimelineViewModel(initialItems: [], enablePolling: false),
         delegate: PreviewTimelineDelegate()
     )

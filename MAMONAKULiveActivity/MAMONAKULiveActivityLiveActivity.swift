@@ -74,8 +74,22 @@ struct MAMONAKULiveActivityLiveActivity: Widget {
 private struct StackLiveActivityView: View {
     let schedule: [ActivityTaskItem]
 
-    private var primary: ActivityTaskItem? { schedule.first }
-    private var stackItems: [ActivityTaskItem] { Array(schedule.dropFirst().prefix(2)) }
+    /// 無料 / 複数表示OFF: 1件のみ。PLUS かつ複数表示ON: 最大3件。
+    /// APNs ペイロードが汚染されてもスタックが出ないように App Group で再制限する。
+    private var visibleSchedule: [ActivityTaskItem] {
+        Array(schedule.prefix(Self.maxVisibleSlotsFromAppGroup))
+    }
+
+    private var primary: ActivityTaskItem? { visibleSchedule.first }
+    private var stackItems: [ActivityTaskItem] { Array(visibleSchedule.dropFirst().prefix(2)) }
+
+    private static var maxVisibleSlotsFromAppGroup: Int {
+        let defaults = UserDefaults(suiteName: AppGroup.id)
+        let isSubscribed = defaults?.bool(forKey: AppGroup.subscriptionIsSubscribedKey) ?? false
+        guard isSubscribed else { return 1 }
+        let multipleEnabled = defaults?.object(forKey: AppGroup.liveActivityMultipleEnabledKey) as? Bool ?? true
+        return multipleEnabled ? 3 : 1
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {

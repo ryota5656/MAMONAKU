@@ -54,6 +54,7 @@ struct MainTabView: View {
             let content = initial.isContentTab ? initial : .timeline
             selectedTab = content
             lastContentTab = content
+            AnalyticsService.logScreen(screenName(for: content))
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: timelineViewModel.editMode.isEditing)
@@ -72,9 +73,9 @@ struct MainTabView: View {
     }
 
     private var actionTabBadgeCount: Int {
-        guard !isTimelineEditing,
-              !isLiveActivityRefreshing,
-              isLiveActivitySyncPending else { return 0 }
+        guard !isTimelineEditing, !isLiveActivityRefreshing else { return 0 }
+        if timelineViewModel.state.tutorialStep == .confirmLiveActivity { return 1 }
+        guard isLiveActivitySyncPending else { return 0 }
         return 1
     }
 
@@ -105,6 +106,17 @@ struct MainTabView: View {
 
         lastContentTab = newValue
         timelineViewModel.state.taskSheetSelectedTab = newValue
+        let screen = screenName(for: newValue)
+        AnalyticsService.logScreen(screen)
+        AnalyticsService.logTabSelect(screen)
+    }
+
+    private func screenName(for tab: TaskSheetTab) -> String {
+        switch tab {
+        case .timeline: return AnalyticsService.Screen.timeline
+        case .settings: return AnalyticsService.Screen.settings
+        case .action: return AnalyticsService.Screen.timeline
+        }
     }
 
     private func syncSelectionFromViewModel(_ newValue: TaskSheetTab) {
@@ -119,7 +131,9 @@ struct MainTabView: View {
             completeEditing()
             return
         }
-        guard !isLiveActivityRefreshing else { return }
+        // 更新不要なら通信しない（チュートリアル最終ステップは操作体験のため許可）。
+        let allowForTutorial = timelineViewModel.state.tutorialStep == .confirmLiveActivity
+        guard !isLiveActivityRefreshing, allowForTutorial || isLiveActivitySyncPending else { return }
         refreshLiveActivity()
     }
 

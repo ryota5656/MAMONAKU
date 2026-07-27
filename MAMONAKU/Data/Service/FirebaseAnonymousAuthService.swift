@@ -21,6 +21,7 @@ final class FirebaseAnonymousAuthService {
     func bootstrap() async {
         if let user = auth.currentUser {
             persistUID(user.uid)
+            AnalyticsService.setUserID(user.uid)
             print("[FirebaseAuth] Existing anonymous user uid=\(user.uid)")
             await LiveActivityPushService.shared.retryPendingScheduleSyncIfNeeded()
             return
@@ -29,6 +30,7 @@ final class FirebaseAnonymousAuthService {
         do {
             let result = try await auth.signInAnonymously()
             persistUID(result.user.uid)
+            AnalyticsService.setUserID(result.user.uid)
             logger.info("Anonymous sign-in succeeded (uid=\(result.user.uid, privacy: .public))")
             print("[FirebaseAuth] Anonymous sign-in succeeded uid=\(result.user.uid)")
             await LiveActivityPushService.shared.retryPendingScheduleSyncIfNeeded()

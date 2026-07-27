@@ -350,9 +350,9 @@ function buildRotations(
     const window = entries.slice(nextIndex, windowEnd);
     rotations.push({
       switchAtUnix: Math.floor(switchAt.getTime() / 1000),
-      schedule: buildTaskItems(window, switchAt),
+      schedule: buildTaskItems(window, switchAt).slice(0, maxVisibleSlots),
       shouldEndActivity: false,
-      reason: "next_event_countdown",
+      reason: maxVisibleSlots <= 1 ? "free_next_single_event" : "next_event_countdown",
     });
   }
   return rotations;
@@ -419,10 +419,11 @@ async function rebuildLiveActivityForUser(params: {
   maxVisibleSlots?: number;
 }): Promise<void> {
   const now = new Date();
-  const maxVisibleSlots = params.maxVisibleSlots ?? 3;
+  // 未指定時は無料相当の1件。誤って3をデフォルトにすると無料でもスタック表示になる。
+  const maxVisibleSlots = Math.min(Math.max(params.maxVisibleSlots ?? 1, 1), 3);
   const entries = await loadTodayEntries(params.uid, now);
   const { startIndex, window } = currentWindow(entries, now, maxVisibleSlots);
-  const schedule = buildTaskItems(window, now);
+  const schedule = buildTaskItems(window, now).slice(0, maxVisibleSlots);
   const rotations = buildRotations(entries, startIndex, now, maxVisibleSlots);
 
   const devicesSnap = await db.collection("users").doc(params.uid).collection("devices").get();
@@ -521,11 +522,24 @@ export const onLiveActivityRebuildRequested = onDocumentWritten(
 
     const data = after.data() ?? {};
     const deviceId = typeof data.deviceId === "string" ? data.deviceId : undefined;
-    const maxVisibleSlots =
-      typeof data.maxVisibleSlots === "number" ? data.maxVisibleSlots : 3;
+    let maxVisibleSlots =
+      typeof data.maxVisibleSlots === "number" ? data.maxVisibleSlots : undefined;
+
+    // コマンドに無い場合は端末に保存済みの値を使い、それでも無ければ無料相当の1件。
+    if (maxVisibleSlots === undefined && deviceId) {
+      const laDoc = await db.collection("liveActivityDevices").doc(deviceId).get();
+      const stored = laDoc.data()?.maxVisibleSlots;
+      if (typeof stored === "number") {
+        maxVisibleSlots = stored;
+      }
+    }
 
     try {
-      await rebuildLiveActivityForUser({ uid, deviceId, maxVisibleSlots });
+      await rebuildLiveActivityForUser({
+        uid,
+        deviceId,
+        maxVisibleSlots: maxVisibleSlots ?? 1,
+      });
     } catch (error) {
       logger.error("onLiveActivityRebuildRequested failed", {
         uid,
@@ -654,11 +668,13 @@ export const executeLiveActivityRotation = onRequest(
       }
 
       // 最新 schedules から再計算（古い Task でも安全）。表示件数は端末に保存したプランを尊重。
+      const maxVisibleSlots = Math.min(
+        Math.max(typeof data.maxVisibleSlots === "number" ? data.maxVisibleSlots : 1, 1),
+        3
+      );
       if (firebaseUid) {
         const now = new Date();
         const entries = await loadTodayEntries(firebaseUid, now);
-        const maxVisibleSlots =
-          typeof data.maxVisibleSlots === "number" ? data.maxVisibleSlots : 1;
         const { window } = currentWindow(entries, now, maxVisibleSlots);
         if (window.length === 0) {
           await sendLiveActivityUpdate({
@@ -668,7 +684,9 @@ export const executeLiveActivityRotation = onRequest(
             event: "end",
           });
         } else {
-          const schedule = refreshScheduleForPush(buildTaskItems(window, now));
+          const schedule = refreshScheduleForPush(
+            buildTaskItems(window, now).slice(0, maxVisibleSlots)
+          );
           await sendLiveActivityUpdate({
             fcmToken,
             liveActivityToken,
@@ -693,7 +711,9 @@ export const executeLiveActivityRotation = onRequest(
             event: "end",
           });
         } else {
-          const refreshedSchedule = refreshScheduleForPush(rotation.schedule);
+          const refreshedSchedule = refreshScheduleForPush(
+            rotation.schedule.slice(0, maxVisibleSlots)
+          );
           await sendLiveActivityUpdate({
             fcmToken,
             liveActivityToken,

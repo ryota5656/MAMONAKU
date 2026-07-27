@@ -105,6 +105,9 @@ struct OnboardingView: View {
         }
         .background(background)
         .interactiveDismissDisabled(true)
+        .onAppear {
+            AnalyticsService.logScreen(AnalyticsService.Screen.onboarding)
+        }
     }
 }
 
