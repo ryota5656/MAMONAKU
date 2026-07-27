@@ -16,6 +16,15 @@ enum AppGroup {
     static let startNotificationEnabledKey = "settings.notification.start_enabled"
     static let liveActivityEnabledKey = "settings.live_activity.enabled"
     static let liveActivityMultipleEnabledKey = "settings.live_activity.multiple_enabled"
+    /// PLUS 加入状態（Live Activity Extension からも参照してスタック表示を制限する）
+    static let subscriptionIsSubscribedKey = "subscription_is_subscribed"
+    static let fcmTokenKey = "push.fcm_token"
+    static let liveActivityUpdateTokenKey = "push.live_activity.update_token"
+    static let liveActivityPushToStartTokenKey = "push.live_activity.push_to_start_token"
+    static let liveActivityDeviceIdKey = "push.live_activity.device_id"
+    static let firebaseUidKey = "auth.firebase.uid"
+    static let liveActivityPendingRotationsKey = "push.live_activity.pending_rotations"
+    static let liveActivitySyncPendingKey = "push.live_activity.sync_pending"
     static let legacyAppearanceKey = "settings.theme.appearance"
     static let legacyPaletteKey = "settings.theme.palette"
 }

@@ -4,6 +4,10 @@
 <dict>
 	<key>IconName</key>
 	<string>AppIcon</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
 </dict>

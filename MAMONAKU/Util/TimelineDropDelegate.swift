@@ -12,10 +12,8 @@ struct TimelineDropDelegate: DropDelegate {
     let onDrop: (UUID, CGPoint) -> Void
     @State private var isLoadingItemID = false
 
-//    func dropEntered(info: DropInfo) {
-//        loadDurationIfNeeded(from: info)
-//    }
-
+    // onDrop を呼ぶ → 本番配置
+    // 指を離した
     func performDrop(info: DropInfo) -> Bool {
         DispatchQueue.main.async {
             dragItemID = nil
@@ -42,6 +40,8 @@ struct TimelineDropDelegate: DropDelegate {
         return true
     }
 
+    // onPreview を呼ぶ → ゴースト表示
+    // ドラッグ中、指が動くたび
     func dropUpdated(info: DropInfo) -> DropProposal? {
         if let itemID = previewItemID ?? dragItemID {
             onPreview(itemID, info.location)
@@ -51,6 +51,8 @@ struct TimelineDropDelegate: DropDelegate {
         return DropProposal(operation: .copy)
     }
 
+    // dropPreview をクリア
+    // タイムライン外に出た
     func dropExited(info: DropInfo) {
         preview = nil
         previewItemID = nil

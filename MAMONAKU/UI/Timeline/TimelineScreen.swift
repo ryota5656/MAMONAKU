@@ -1,0 +1,236 @@
+import SwiftUI
+
+/// タイムライン画面のエントリーポイント。ViewModel 連携とシート / ピークカード制御を担う。
+struct TimelineScreen: View {
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    @ObservedObject var viewModel: TimelineViewModel
+
+    var body: some View {
+        TimelineScreenContent(
+            state: viewModel.state,
+            viewModel: viewModel,
+            delegate: viewModel
+        )
+        // ピークカード分の下余白は常に確保し、シート開閉でタイムライン高さが変わらないようにする
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            taskSheetPeekCard
+                .opacity(showsPeekCard ? 1 : 0)
+                .allowsHitTesting(showsPeekCard)
+                .accessibilityHidden(!showsPeekCard)
+        }
+        .ignoresSafeArea(.keyboard)
+        .onPreferenceChange(HeaderHeightKey.self) { value in
+            viewModel.state.headerHeight = value
+        }
+        .sheet(isPresented: expandedSheetPresented, content: { taskSheetContent })
+        .onChange(of: viewModel.dropPreview) { _, preview in
+            viewModel.timelineDropPreviewDidChange(previewExists: preview != nil)
+        }
+        .onAppear {
+            viewModel.timelineDidAppear()
+        }
+        .onChange(of: viewModel.items) { _, _ in
+            viewModel.timelineItemsDidChange(hasPlacedTutorialTaskAfterNow: hasPlacedTutorialTaskAfterNow)
+        }
+    }
+
+    private var showsPeekCard: Bool {
+        viewModel.state.taskSheetDetent == TaskSheetPresentation.peek
+    }
+
+    private var taskSheetPeekCard: some View {
+        TaskListPeekCardView(
+            items: viewModel.items,
+            isDraggingTask: isDraggingTaskBinding,
+            isSheetDropTargeted: isSheetDropTargetedBinding,
+            dragItemID: $viewModel.dragItemID,
+            heightForDuration: { viewModel.heightForDuration($0) },
+            isSubscribed: subscriptionManager.effectiveIsSubscribed,
+            onExpand: {
+                expandTaskSheetFromPeek()
+                viewModel.timelineDidOpenCreateSheet()
+            },
+            isTutorialHighlighted: viewModel.state.tutorialStep == .touchStock,
+            onReturnToStock: { id in
+                viewModel.returnItemToStock(id: id)
+            },
+            onCreate: { title, durationMinutes, priority, startDate, endDate in
+                viewModel.createItem(
+                    title: title,
+                    durationMinutes: durationMinutes,
+                    priority: priority,
+                    startDate: startDate,
+                    endDate: endDate
+                )
+            },
+            onUpdate: { id, title, durationMinutes, priority in
+                viewModel.updateItemDetails(
+                    id: id,
+                    title: title,
+                    durationMinutes: durationMinutes,
+                    priority: priority
+                )
+            },
+            onDelete: { id in
+                viewModel.deleteItem(id: id)
+            },
+            onReorderStock: { from, to in
+                viewModel.moveTaskItems(from: from, to: to)
+            }
+        )
+        .padding(.horizontal, 16)
+        .padding(.bottom, TaskSheetPresentation.peekBottomGap)
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+
+    private var taskSheetContent: some View {
+        taskListSheetView
+            .presentationDetents(taskSheetDetents, selection: sheetDetentBinding)
+            .presentationDragIndicator(taskSheetDragIndicator)
+            .presentationBackgroundInteraction(.enabled)
+            // ピークへ戻すのはシート dismiss。peek detent を挟むと閉じる時に背景が揺れる
+            .interactiveDismissDisabled(!viewModel.state.isTaskSheetDraggable)
+    }
+
+    private var taskListSheetView: some View {
+        TaskListSheetView(
+            items: viewModel.items,
+            isPresented: expandedSheetPresented,
+            isDraggingTask: isDraggingTaskBinding,
+            isSheetDropTargeted: isSheetDropTargetedBinding,
+            dragItemID: $viewModel.dragItemID,
+            isSheetExpanded: $viewModel.chipsExpanded,
+            sheetDetent: sheetDetentBinding,
+            isSheetDraggable: isSheetDraggableBinding,
+            onMove: { from, to in
+                viewModel.moveTaskItems(from: from, to: to)
+            },
+            onAdd: { title, durationMinutes, priority in
+                viewModel.addStockItem(title: title, durationMinutes: durationMinutes, priority: priority)
+            },
+            onDelete: { id in
+                viewModel.deleteItem(id: id)
+            },
+            onUpdate: { id, title, durationMinutes, priority in
+                viewModel.updateItemDetails(
+                    id: id,
+                    title: title,
+                    durationMinutes: durationMinutes,
+                    priority: priority
+                )
+            },
+            onReturnToStock: { id in
+                viewModel.returnItemToStock(id: id)
+            },
+            heightForDuration: { viewModel.heightForDuration($0) },
+            onAddDebugTask: addDebugTask,
+            isSubscribed: subscriptionManager.effectiveIsSubscribed
+        )
+    }
+
+    private var taskSheetDetents: Set<PresentationDetent> {
+        if viewModel.state.isTaskSheetDraggable {
+            return TaskSheetPresentation.expandedSheetDetents
+        }
+        return [viewModel.state.taskSheetDetent]
+    }
+
+    private var taskSheetDragIndicator: Visibility {
+        viewModel.state.isTaskSheetDraggable ? .visible : .hidden
+    }
+
+    private var isDraggingTaskBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.state.isDraggingTask },
+            set: { viewModel.state.isDraggingTask = $0 }
+        )
+    }
+
+    private var isSheetDropTargetedBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.state.isSheetDropTargeted },
+            set: { viewModel.state.isSheetDropTargeted = $0 }
+        )
+    }
+
+    private var sheetDetentBinding: Binding<PresentationDetent> {
+        Binding(
+            get: {
+                let detent = viewModel.state.taskSheetDetent
+                // シート表示中は peek を medium に丸め、不正な selection を避ける
+                if detent == TaskSheetPresentation.peek {
+                    return TaskSheetPresentation.medium
+                }
+                return detent
+            },
+            set: { viewModel.state.taskSheetDetent = $0 }
+        )
+    }
+
+    private var isSheetDraggableBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.state.isTaskSheetDraggable },
+            set: { viewModel.state.isTaskSheetDraggable = $0 }
+        )
+    }
+
+    private var expandedSheetPresented: Binding<Bool> {
+        Binding(
+            get: {
+                viewModel.state.taskSheetDetent != TaskSheetPresentation.peek
+            },
+            set: { presented in
+                if !presented {
+                    viewModel.state.taskSheetDetent = TaskSheetPresentation.peek
+                }
+            }
+        )
+    }
+
+    private func expandTaskSheetFromPeek() {
+        // ピークタップでは TaskListSheet を開かず、作成モーダルを TaskListPeekCardView 側で表示する
+        // viewModel.state.taskSheetDetent = TaskSheetPresentation.medium
+    }
+
+    private func addDebugTask(minutes: Int) {
+        viewModel.addTestTask(
+            startDate: Date().addingTimeInterval(TimeInterval(minutes * 60)),
+            durationMinutes: 15
+        )
+    }
+
+    private func hasPlacedTutorialTaskAfterNow() -> Bool {
+        let nowMinutes = viewModel.minutesSinceMidnight(date: Date())
+        return viewModel.items.contains {
+            $0.dropDate != nil &&
+            ($0.startMinutes ?? -1) > nowMinutes
+        }
+    }
+}
+
+#Preview {
+    MainTabView()
+        .environmentObject(SubscriptionManager())
+        .environmentObject(ThemeManager())
+}
+
+#Preview("scheduleItemPreview") {
+    ScheduleItemPreviewView(
+        item: TimelineItem(title: "Preview", durationMinutes: 60, startMinutes: 120),
+        showTimeRange: true
+    )
+    .frame(height: 100)
+    .padding(20)
+    .environmentObject(ThemeManager())
+}
+
+#Preview("timeline with items") {
+    MainTabView(timelineItems: [
+        TimelineItem(title: "Wake up", durationMinutes: 15, startMinutes: 17 * 60, dropDate: Date()),
+        TimelineItem(title: "Workout", durationMinutes: 60, startMinutes: 2 * 60 + 45, dropDate: Date()),
+        TimelineItem(title: "Breakfast", durationMinutes: 30, startMinutes: 4 * 60, dropDate: Date()),
+        TimelineItem(title: "Study", durationMinutes: 120, startMinutes: 5 * 60, dropDate: Date())
+    ])
+    .environmentObject(SubscriptionManager())
+    .environmentObject(ThemeManager())
+}
