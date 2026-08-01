@@ -13,15 +13,8 @@ final class ContentViewModelSpec: QuickSpec {
                 return ud
             }
 
-            it("shows onboarding when not seen") {
+            it("counts a session on appear without onboarding") {
                 let ud = makeDefaults()
-                let vm = ContentViewModel(userDefaults: ud)
-                expect(vm.state.isOnboardingPresented).to(beTrue())
-            }
-
-            it("counts a session after onboarding completion") {
-                let ud = makeDefaults()
-                ud.set(true, forKey: "onboarding.hasSeen")
                 ud.set(0, forKey: "engagement.sessionCount")
 
                 let vm = ContentViewModel(userDefaults: ud)
@@ -32,7 +25,6 @@ final class ContentViewModelSpec: QuickSpec {
 
             it("presents subscription prompt on 3rd session when not subscribed") {
                 let ud = makeDefaults()
-                ud.set(true, forKey: "onboarding.hasSeen")
                 ud.set(2, forKey: "engagement.sessionCount")
                 ud.set(false, forKey: "engagement.hasShownSubscriptionPrompt")
 
@@ -44,4 +36,3 @@ final class ContentViewModelSpec: QuickSpec {
         }
     }
 }
-

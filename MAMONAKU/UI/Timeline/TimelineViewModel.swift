@@ -107,27 +107,13 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         startFirstRunTutorialIfNeeded()
     }
 
-    func timelineDidOpenCreateSheet() {
-        if state.tutorialStep == .touchStock {
-            state.tutorialStep = .createTaskWithTitle
-        }
-    }
+    func timelineDidOpenCreateSheet() {}
 
     func timelineItemsDidChange(hasPlacedTutorialTaskAfterNow: () -> Bool) {
-        switch state.tutorialStep {
-        case .createTaskWithTitle:
-            if hasPlacedTutorialTaskAfterNow() {
-                state.tutorialStep = .confirmCountdown
-            } else if items.contains(where: { $0.dropDate == nil }) {
-                state.tutorialStep = .placeTaskAfterNow
-            }
-        case .placeTaskAfterNow:
-            if hasPlacedTutorialTaskAfterNow() {
-                state.tutorialStep = .confirmCountdown
-            }
-        default:
-            break
-        }
+        guard state.tutorialStep == .placeTaskAfterNow else { return }
+        guard hasPlacedTutorialTaskAfterNow() else { return }
+        state.tutorialStep = .confirmComplete
+        state.tutorialPulse = true
     }
 
     func timelineDropPreviewDidChange(previewExists: Bool) {
@@ -160,38 +146,26 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         guard !state.isLiveActivityRefreshing else { return }
         // 未反映の変更がなければ通信せず終了する。
         // チュートリアル最終ステップでは、操作体験のため同期を試みる。
-        let isTutorialLiveActivityStep = state.tutorialStep == .confirmLiveActivity
-        guard isTutorialLiveActivityStep
+        let isTutorialCompleteStep = state.tutorialStep == .confirmComplete
+        guard isTutorialCompleteStep
                 || state.isLiveActivitySyncPending
                 || LiveActivitySyncCoordinator.isPending else { return }
         let startedAt = Date()
         state.isLiveActivityRefreshing = true
         await commitPendingLiveActivitySync(force: true)
         AnalyticsService.log(AnalyticsService.Event.liveActivityRefresh)
-        if isTutorialLiveActivityStep {
-            completeTutorial()
-        }
         let remainingDisplayTime = 1.0 - Date().timeIntervalSince(startedAt)
         if remainingDisplayTime > 0 {
             try? await Task.sleep(nanoseconds: UInt64(remainingDisplayTime * 1_000_000_000))
         }
         state.isLiveActivityRefreshing = false
+        if isTutorialCompleteStep {
+            await finishFirstRunTutorial(skipped: false)
+        }
     }
 
-    func timelineAdvanceTutorialStep() {
-        guard let step = state.tutorialStep else { return }
-        switch step {
-        case .touchStock:
-            state.tutorialStep = .createTaskWithTitle
-        case .createTaskWithTitle:
-            state.tutorialStep = .placeTaskAfterNow
-        case .placeTaskAfterNow:
-            state.tutorialStep = .confirmCountdown
-        case .confirmCountdown:
-            state.tutorialStep = .confirmLiveActivity
-        case .confirmLiveActivity:
-            completeTutorial()
-        }
+    func timelineSkipTutorial() {
+        Task { await finishFirstRunTutorial(skipped: true) }
     }
 
     func timelineRadialAction(at location: CGPoint, in size: CGSize) -> TimelineRadialAction? {
@@ -225,14 +199,41 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
             return
         }
         guard !UserDefaults.standard.bool(forKey: tutorialCompletedKey) else { return }
-        state.tutorialStep = .touchStock
+        ensureFirstRunPresetStockItem()
+        state.tutorialStep = .placeTaskAfterNow
         state.tutorialPulse = true
+    }
+
+    private func ensureFirstRunPresetStockItem() {
+        let hasStock = items.contains { $0.dropDate == nil }
+        guard !hasStock else { return }
+        items.append(
+            TimelineItem(
+                title: "はじめてのタスク",
+                durationMinutes: 30,
+                priority: .low
+            )
+        )
+        // Stock のみの追加では LA 更新不要なので pending にしない
+        repository.saveItems(items)
     }
 
     private func completeTutorial() {
         state.tutorialStep = nil
         state.tutorialPulse = false
         UserDefaults.standard.set(true, forKey: tutorialCompletedKey)
+    }
+
+    /// 初回チュートリアル完了。スキップ時は通知許可を出さない。
+    private func finishFirstRunTutorial(skipped: Bool) async {
+        guard state.tutorialStep != nil else { return }
+        completeTutorial()
+        AnalyticsService.log(
+            AnalyticsService.Event.firstRunComplete,
+            parameters: [AnalyticsService.Param.skipped: skipped]
+        )
+        guard !skipped else { return }
+        await NotificationAuthorizationService.requestAuthorizationIfNeeded()
     }
    // ストックのタスクをドロップ位置の時刻にタイムラインへ配置する
     func addItem(item: TimelineItem, dropY: CGFloat, on date: Date) {
@@ -849,9 +850,17 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
 
     /// 編集完了ボタン用: 編集モード解除後に、未反映なら LA / クラウド同期する。
     func completeEditingAndSyncLiveActivity() async {
+        let isTutorialCompleteStep = state.tutorialStep == .confirmComplete
         exitEditMode()
-        let shouldSync = state.isLiveActivitySyncPending || LiveActivitySyncCoordinator.isPending
-        guard shouldSync, !state.isLiveActivityRefreshing else { return }
+        let shouldSync = isTutorialCompleteStep
+            || state.isLiveActivitySyncPending
+            || LiveActivitySyncCoordinator.isPending
+        guard shouldSync, !state.isLiveActivityRefreshing else {
+            if isTutorialCompleteStep {
+                await finishFirstRunTutorial(skipped: false)
+            }
+            return
+        }
 
         let startedAt = Date()
         state.isLiveActivityRefreshing = true
@@ -862,6 +871,9 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
             try? await Task.sleep(nanoseconds: UInt64(remainingDisplayTime * 1_000_000_000))
         }
         state.isLiveActivityRefreshing = false
+        if isTutorialCompleteStep {
+            await finishFirstRunTutorial(skipped: false)
+        }
     }
 }
 

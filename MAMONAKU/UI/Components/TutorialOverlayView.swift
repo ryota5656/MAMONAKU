@@ -2,7 +2,7 @@ import SwiftUI
 
 struct TutorialOverlayView: View {
     let step: TimelineTutorialStep
-    let onAdvance: () -> Void
+    let onSkip: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeManager: ThemeManager
@@ -21,15 +21,15 @@ struct TutorialOverlayView: View {
                 .foregroundStyle(primary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
-                Button(step.primaryButtonTitle, action: onAdvance)
+                Button("あとで", action: onSkip)
                     .font(.caption.weight(.bold))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(
                         Capsule()
-                            .fill(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
+                            .strokeBorder(secondary.opacity(0.35), lineWidth: 1)
                     )
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(primary)
             }
         }
         .padding(12)

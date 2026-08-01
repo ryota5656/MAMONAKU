@@ -14,7 +14,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         Messaging.messaging().delegate = self
 
         Task { @MainActor in
-            await requestNotificationAuthorization(application: application)
+            // 起動直後は許可ダイアログを出さず、APNs 登録のみ行う。
+            // 通知許可は初回チュートリアル完了後（または設定）で取得する。
+            NotificationAuthorizationService.registerForRemoteNotifications()
             await FirebaseAnonymousAuthService.shared.bootstrap()
             LiveActivityPushService.shared.startObserving()
         }
@@ -44,19 +46,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         Task { @MainActor in
             LiveActivityPushService.shared.setFCMToken(fcmToken)
         }
-    }
-
-    private func requestNotificationAuthorization(application: UIApplication) async {
-        do {
-            let granted = try await UNUserNotificationCenter.current().requestAuthorization(
-                options: [.alert, .badge, .sound]
-            )
-            print("[Push] Notification authorization granted: \(granted)")
-        } catch {
-            print("[Push] Notification authorization failed: \(error.localizedDescription)")
-        }
-
-        application.registerForRemoteNotifications()
     }
 }
 

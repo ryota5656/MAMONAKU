@@ -6,7 +6,6 @@ final class ContentViewModel: ObservableObject {
     struct ViewState: Equatable {
         var isSubscriptionPromptPresented: Bool = false
         var isReviewSatisfactionAlertPresented: Bool = false
-        var isOnboardingPresented: Bool = true
     }
 
     enum Route: Equatable {
@@ -14,7 +13,6 @@ final class ContentViewModel: ObservableObject {
     }
 
     private enum Keys {
-        static let hasSeenOnboarding = "onboarding.hasSeen"
         static let sessionCount = "engagement.sessionCount"
         static let hasShownSubscriptionPrompt = "engagement.hasShownSubscriptionPrompt"
         static let hasShownReviewSatisfactionPrompt = "engagement.hasShownReviewSatisfactionPrompt"
@@ -28,12 +26,9 @@ final class ContentViewModel: ObservableObject {
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-
-        let hasSeenOnboarding = userDefaults.bool(forKey: Keys.hasSeenOnboarding)
         self.state = ViewState(
             isSubscriptionPromptPresented: false,
-            isReviewSatisfactionAlertPresented: false,
-            isOnboardingPresented: !hasSeenOnboarding
+            isReviewSatisfactionAlertPresented: false
         )
     }
 
@@ -63,18 +58,6 @@ final class ContentViewModel: ObservableObject {
         handleSessionStartIfNeeded(isSubscribed: isSubscribed)
     }
 
-    func completeOnboardingIfNeeded() {
-        let hasSeenOnboarding = userDefaults.bool(forKey: Keys.hasSeenOnboarding)
-        if !hasSeenOnboarding {
-            userDefaults.set(true, forKey: Keys.hasSeenOnboarding)
-            AnalyticsService.log(AnalyticsService.Event.onboardingComplete)
-        }
-        if state.isOnboardingPresented {
-            state.isOnboardingPresented = false
-        }
-        handleSessionStartIfNeeded(isSubscribed: nil)
-    }
-
     func dismissSubscriptionPrompt() {
         state.isSubscriptionPromptPresented = false
     }
@@ -88,8 +71,7 @@ final class ContentViewModel: ObservableObject {
     }
 
     private func handleSessionStartIfNeeded(isSubscribed: Bool?) {
-        let hasSeenOnboarding = userDefaults.bool(forKey: Keys.hasSeenOnboarding)
-        guard hasSeenOnboarding, !hasCountedCurrentLaunch else { return }
+        guard !hasCountedCurrentLaunch else { return }
         hasCountedCurrentLaunch = true
 
         let nextSessionCount = userDefaults.integer(forKey: Keys.sessionCount) + 1
@@ -125,4 +107,3 @@ final class ContentViewModel: ObservableObject {
         }
     }
 }
-

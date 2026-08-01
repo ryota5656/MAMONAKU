@@ -50,7 +50,7 @@ struct TimelineScreen: View {
                 expandTaskSheetFromPeek()
                 viewModel.timelineDidOpenCreateSheet()
             },
-            isTutorialHighlighted: viewModel.state.tutorialStep == .touchStock,
+            isTutorialHighlighted: viewModel.state.tutorialStep == .placeTaskAfterNow,
             onReturnToStock: { id in
                 viewModel.returnItemToStock(id: id)
             },

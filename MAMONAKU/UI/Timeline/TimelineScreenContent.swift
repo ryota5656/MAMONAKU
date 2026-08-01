@@ -54,10 +54,10 @@ struct TimelineScreenContent: View {
     @ViewBuilder
     private var tutorialTopOverlay: some View {
         if let tutorialStep = state.tutorialStep {
-            TutorialOverlayView(step: tutorialStep, onAdvance: {
-                delegate?.timelineAdvanceTutorialStep()
+            TutorialOverlayView(step: tutorialStep, onSkip: {
+                delegate?.timelineSkipTutorial()
             })
-            .padding(.top, tutorialStep == .confirmCountdown ? 150 : 14)
+            .padding(.top, 14)
             .padding(.horizontal, 16)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutorialStep)
         }
@@ -214,15 +214,6 @@ struct TimelineScreenContent: View {
                     .offset(x: 2, y: -2)
             }
         }
-        .overlay {
-            if state.tutorialStep == .confirmLiveActivity {
-                Circle()
-                    .stroke(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme), lineWidth: 3)
-                    .scaleEffect(state.tutorialPulse ? 1.35 : 1.05)
-                    .opacity(state.tutorialPulse ? 0.2 : 0.9)
-                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: state.tutorialPulse)
-            }
-        }
         .contentShape(Circle())
         .onTapGesture {
             delegate?.timelineOpenTaskSheet()
@@ -308,7 +299,7 @@ final class PreviewTimelineDelegate: TimelineDelegate {
     func timelineToggleHeaderExpanded() {}
     func timelineOpenTaskSheet() {}
     func timelineOpenSettings() {}
-    func timelineAdvanceTutorialStep() {}
+    func timelineSkipTutorial() {}
     func timelineRefreshLiveActivityManually() async {}
     func timelineRadialAction(at location: CGPoint, in size: CGSize) -> TimelineRadialAction? { nil }
     func timelineIsRadialMenuEnabled() -> Bool { true }
@@ -333,7 +324,7 @@ final class PreviewTimelineDelegate: TimelineDelegate {
 
 #Preview("チュートリアル表示") {
     TimelineScreenContent(
-        state: TimelineViewState(tutorialStep: .touchStock),
+        state: TimelineViewState(tutorialStep: .placeTaskAfterNow),
         viewModel: TimelineViewModel(initialItems: [], enablePolling: false),
         delegate: PreviewTimelineDelegate()
     )

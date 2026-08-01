@@ -12,6 +12,7 @@ enum AnalyticsService {
 
     enum Event {
         static let onboardingComplete = "onboarding_complete"
+        static let firstRunComplete = "first_run_complete"
         static let taskCreate = "task_create"
         static let taskComplete = "task_complete"
         static let taskDelete = "task_delete"
@@ -27,6 +28,7 @@ enum AnalyticsService {
         static let tab = "tab"
         static let productId = "product_id"
         static let success = "success"
+        static let skipped = "skipped"
     }
 
     static func setUserID(_ userID: String?) {

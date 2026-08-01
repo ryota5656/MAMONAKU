@@ -24,38 +24,17 @@ struct TimelineViewState: Equatable {
 }
 
 enum TimelineTutorialStep: Equatable {
-    /// Stock をタップして作成画面を開く
-    case touchStock
-    /// タイトルを入れてタスクを作成する
-    case createTaskWithTitle
-    /// Stock から現在時刻より後へドラッグ＆ドロップ
+    /// Stock のプリセットを現在時刻より後へドラッグ＆ドロップ
     case placeTaskAfterNow
-    /// カウントダウン開始を確認
-    case confirmCountdown
-    /// 更新ボタンで Live Activity をロック画面に出す
-    case confirmLiveActivity
+    /// 右下の完了（✓）で Live Activity を更新
+    case confirmComplete
 
     var message: String {
         switch self {
-        case .touchStock:
-            return "下の Stock をタップすると、タスクを作成できます。"
-        case .createTaskWithTitle:
-            return "タイトルを入力して、タスクを作成しましょう。"
         case .placeTaskAfterNow:
             return "Stock のタスクをドラッグして、現在時刻より後のタイムラインへ置いてみましょう。"
-        case .confirmCountdown:
-            return "カウントダウンが始まりました。残り時間が表示されることを確認しましょう。"
-        case .confirmLiveActivity:
-            return "右下の更新ボタンを押して、ロック画面に Live Activity が表示されることを確認しましょう。"
-        }
-    }
-
-    var primaryButtonTitle: String {
-        switch self {
-        case .confirmLiveActivity:
-            return "チュートリアル完了"
-        default:
-            return "次へ"
+        case .confirmComplete:
+            return "右下の完了（✓）をタップして、Live Activity を更新しましょう。"
         }
     }
 }

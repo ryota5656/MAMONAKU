@@ -52,15 +52,6 @@ struct ContentView: View {
             }
             viewModel.handleRouteConsumed()
         }
-        .fullScreenCover(isPresented: Binding(get: { state.isOnboardingPresented }, set: { isPresented in
-            if !isPresented {
-                viewModel.completeOnboardingIfNeeded()
-            }
-        })) {
-            OnboardingView {
-                viewModel.completeOnboardingIfNeeded()
-            }
-        }
     }
 }
 

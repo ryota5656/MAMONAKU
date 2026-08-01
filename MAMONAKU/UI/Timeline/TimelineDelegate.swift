@@ -9,7 +9,7 @@ protocol TimelineDelegate: AnyObject {
     func timelineToggleHeaderExpanded()
     func timelineOpenTaskSheet()
     func timelineOpenSettings()
-    func timelineAdvanceTutorialStep()
+    func timelineSkipTutorial()
     func timelineRefreshLiveActivityManually() async
     func timelineRadialAction(at location: CGPoint, in size: CGSize) -> TimelineRadialAction?
     func timelineIsRadialMenuEnabled() -> Bool

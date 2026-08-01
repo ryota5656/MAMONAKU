@@ -73,8 +73,8 @@ struct MainTabView: View {
     }
 
     private var actionTabBadgeCount: Int {
+        if timelineViewModel.state.tutorialStep == .confirmComplete { return 1 }
         guard !isTimelineEditing, !isLiveActivityRefreshing else { return 0 }
-        if timelineViewModel.state.tutorialStep == .confirmLiveActivity { return 1 }
         guard isLiveActivitySyncPending else { return 0 }
         return 1
     }
@@ -132,7 +132,7 @@ struct MainTabView: View {
             return
         }
         // 更新不要なら通信しない（チュートリアル最終ステップは操作体験のため許可）。
-        let allowForTutorial = timelineViewModel.state.tutorialStep == .confirmLiveActivity
+        let allowForTutorial = timelineViewModel.state.tutorialStep == .confirmComplete
         guard !isLiveActivityRefreshing, allowForTutorial || isLiveActivitySyncPending else { return }
         refreshLiveActivity()
     }
