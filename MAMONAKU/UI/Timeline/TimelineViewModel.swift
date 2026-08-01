@@ -252,6 +252,8 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
             items.append(updated)
         }
         persistItems()
+        // 配置直後に微調整できるよう編集モードへ入る
+        _ = requestEnterEditMode(for: item.id)
     }
 
    // タイムライン上のアイテムを別の位置・日付にドロップで移動する（onDrop 用）
@@ -845,9 +847,21 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         }
     }
 
-    /// 編集完了ボタン用: 編集モード解除後にクラウド同期する。
+    /// 編集完了ボタン用: 編集モード解除後に、未反映なら LA / クラウド同期する。
     func completeEditingAndSyncLiveActivity() async {
         exitEditMode()
+        let shouldSync = state.isLiveActivitySyncPending || LiveActivitySyncCoordinator.isPending
+        guard shouldSync, !state.isLiveActivityRefreshing else { return }
+
+        let startedAt = Date()
+        state.isLiveActivityRefreshing = true
+        await commitPendingLiveActivitySync(force: true)
+        AnalyticsService.log(AnalyticsService.Event.liveActivityRefresh)
+        let remainingDisplayTime = 1.0 - Date().timeIntervalSince(startedAt)
+        if remainingDisplayTime > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(remainingDisplayTime * 1_000_000_000))
+        }
+        state.isLiveActivityRefreshing = false
     }
 }
 
