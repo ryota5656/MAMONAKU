@@ -21,6 +21,17 @@ struct TimelineViewState: Equatable {
     var tutorialStep: TimelineTutorialStep? = nil
     var tutorialPulse: Bool = false
     var taskSheetSelectedTab: TaskSheetTab = .timeline
+    /// 現在時刻付近へのスクロール要求（値が変わったら WhiteSheet 側で scroll）
+    var scrollToNowRequestID: UUID? = nil
+}
+
+/// タイムライン長押しで作成中の仮配置
+struct PendingPlacement: Equatable {
+    var date: Date
+    var startMinutes: Int
+    var durationMinutes: Int
+    /// false: ドラッグ中のプレビュー / true: タイトル入力待ち
+    var isAwaitingTitle: Bool
 }
 
 enum TimelineTutorialStep: Equatable {

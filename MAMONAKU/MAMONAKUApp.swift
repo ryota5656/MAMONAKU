@@ -9,6 +9,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         FirebaseApp.configure()
+        #if DEBUG
+        print("[Firebase] env=\(AppEnvironment.name.rawValue) project=\(AppEnvironment.firebaseProjectID)")
+        #endif
 
         UNUserNotificationCenter.current().delegate = self
         Messaging.messaging().delegate = self

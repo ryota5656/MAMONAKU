@@ -79,31 +79,38 @@ final class TimelineFirestoreSyncService {
         }
 
         let deviceId = LiveActivityPushService.shared.resolvedDeviceID()
-        try await LiveActivityPushService.shared.waitForRequiredPushTokens(timeoutSeconds: 15)
-        try await upsertDeviceTokens(
-            uid: uid,
-            deviceId: deviceId,
-            maxVisibleSlots: maxVisibleSlots,
-            batch: batch
-        )
 
-        let rebuildRef = db.collection("users").document(uid)
-            .collection("liveActivityCommands")
-            .document("rebuild")
-        batch.setData(
-            [
-                "requestedAt": FieldValue.serverTimestamp(),
-                "deviceId": deviceId,
-                "maxVisibleSlots": maxVisibleSlots,
-                "reason": "client_commit",
-            ],
-            forDocument: rebuildRef,
-            merge: true
-        )
+        // 予定の書き込みはトークン取得成否と切り離す（トークン待ち失敗で schedules が一切残らないのを防ぐ）
+        do {
+            try await LiveActivityPushService.shared.waitForRequiredPushTokens(timeoutSeconds: 15)
+            try await upsertDeviceTokens(
+                uid: uid,
+                deviceId: deviceId,
+                maxVisibleSlots: maxVisibleSlots,
+                batch: batch
+            )
+
+            let rebuildRef = db.collection("users").document(uid)
+                .collection("liveActivityCommands")
+                .document("rebuild")
+            batch.setData(
+                [
+                    "requestedAt": FieldValue.serverTimestamp(),
+                    "deviceId": deviceId,
+                    "maxVisibleSlots": maxVisibleSlots,
+                    "reason": "client_commit",
+                ],
+                forDocument: rebuildRef,
+                merge: true
+            )
+        } catch {
+            logger.warning("Device/rebuild sync skipped: \(error.localizedDescription, privacy: .public)")
+            print("[TimelineFirestoreSync] Device/rebuild sync skipped — schedules will still be committed: \(error.localizedDescription)")
+        }
 
         try await batch.commit()
         logger.info("Synced \(eligible.count, privacy: .public) schedules for uid=\(uid, privacy: .public)")
-        print("[TimelineFirestoreSync] Synced \(eligible.count) schedules, rebuild requested (slots=\(maxVisibleSlots))")
+        print("[TimelineFirestoreSync] Synced \(eligible.count) schedules for uid=\(uid)")
     }
 
     private func upsertDeviceTokens(

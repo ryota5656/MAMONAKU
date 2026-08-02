@@ -1,59 +1,90 @@
 import SwiftUI
 
+/// 日付を横スクロールで辿れるストリップ（シェブロンなし）。
 struct CalendarWeekStripView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeManager: ThemeManager
     @Binding var selectedDate: Date
     @Binding var isTwoDayView: Bool
 
+    @State private var rangeCenter: Date = Calendar.current.startOfDay(for: Date())
+    private let dayCellWidth: CGFloat = 48
+    /// 旧週ストリップと同程度の高さ（横 ScrollView が縦に伸びないよう固定）
+    private let dayStripHeight: CGFloat = 48
+    private let dayRangeRadius = 180
+
     var body: some View {
         let cal = Calendar.current
-        let weekDates = CalendarHeaderDateFormatting.weekDates(for: selectedDate)
-        let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
+        let dates = dayDates(center: rangeCenter)
 
-        HStack(spacing: 0) {
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                    selectedDate = CalendarHeaderDateFormatting.addDays(-7, to: selectedDate)
-                    isTwoDayView = false
-                }
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(secondary)
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.plain)
-
-            ForEach(weekDates, id: \.self) { date in
-                CalendarWeekDayCell(
-                    date: date,
-                    isSelected: cal.isDate(date, inSameDayAs: selectedDate),
-                    isToday: cal.isDateInToday(date)
-                ) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        if cal.isDate(date, inSameDayAs: selectedDate) {
-                            isTwoDayView.toggle()
-                        } else {
-                            selectedDate = date
-                            isTwoDayView = false
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(dates, id: \.self) { date in
+                        let day = cal.startOfDay(for: date)
+                        CalendarWeekDayCell(
+                            date: day,
+                            isSelected: cal.isDate(day, inSameDayAs: selectedDate),
+                            isToday: cal.isDateInToday(day)
+                        ) {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                if cal.isDate(day, inSameDayAs: selectedDate) {
+                                    isTwoDayView.toggle()
+                                } else {
+                                    selectedDate = day
+                                    isTwoDayView = false
+                                }
+                            }
                         }
+                        .frame(width: dayCellWidth, height: dayStripHeight)
+                        .id(day)
                     }
                 }
             }
-
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                    selectedDate = CalendarHeaderDateFormatting.addDays(7, to: selectedDate)
-                    isTwoDayView = false
+            .frame(height: dayStripHeight)
+            .onAppear {
+                syncRangeCenterIfNeeded(for: selectedDate)
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    scrollToSelected(proxy: proxy, animated: false)
                 }
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(secondary)
-                    .frame(width: 24, height: 24)
             }
-            .buttonStyle(.plain)
+            .onChange(of: selectedDate) { _, newDate in
+                syncRangeCenterIfNeeded(for: newDate)
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 30_000_000)
+                    scrollToSelected(proxy: proxy, animated: true)
+                }
+            }
+        }
+    }
+
+    private func dayDates(center: Date) -> [Date] {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: center)
+        return (-dayRangeRadius...dayRangeRadius).compactMap {
+            cal.date(byAdding: .day, value: $0, to: start)
+        }
+    }
+
+    private func syncRangeCenterIfNeeded(for date: Date) {
+        let cal = Calendar.current
+        let day = cal.startOfDay(for: date)
+        let offset = cal.dateComponents([.day], from: rangeCenter, to: day).day ?? 0
+        if abs(offset) > dayRangeRadius - 30 {
+            rangeCenter = day
+        }
+    }
+
+    private func scrollToSelected(proxy: ScrollViewProxy, animated: Bool) {
+        let day = Calendar.current.startOfDay(for: selectedDate)
+        let action = {
+            proxy.scrollTo(day, anchor: .center)
+        }
+        if animated {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85), action)
+        } else {
+            action()
         }
     }
 }

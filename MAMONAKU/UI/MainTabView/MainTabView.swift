@@ -26,6 +26,12 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             Tab(TaskSheetTab.timeline.title, systemImage: TaskSheetTab.timeline.icon, value: .timeline) {
                 TimelineScreen(viewModel: timelineViewModel)
+                    // Tab 配下に置くと tabBarController を辿りやすい
+                    .background {
+                        TabBarReselectObserver { index in
+                            handleTabReselect(index: index)
+                        }
+                    }
             }
 
             Tab(TaskSheetTab.settings.title, systemImage: TaskSheetTab.settings.icon, value: .settings) {
@@ -33,14 +39,13 @@ struct MainTabView: View {
             }
 
             Tab(value: .action, role: .search) {
-                // 中身は触らず、onChange で直前タブへ戻す（Color.clear は白画面に見える）。
-                // TimelineScreen を載せると onAppear が再発火するため背景のみにする。
+                // 選択が一瞬乗っても白く見えないよう、直前コンテンツと同じ背景色だけ置く。
+                // TimelineScreen を載せると onAppear が再発火するため中身は載せない。
                 AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme)
                     .ignoresSafeArea()
             } label: {
                 actionTabLabel
             }
-            .badge(actionTabBadgeCount)
         }
         .tint(AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme))
         .onChange(of: selectedTab) { previous, newValue in
@@ -56,6 +61,7 @@ struct MainTabView: View {
             lastContentTab = content
             AnalyticsService.logScreen(screenName(for: content))
         }
+        // タイムライン⇔設定などのタブ切替アニメ。action からの復元は withTransaction でアニメ無効。
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: timelineViewModel.editMode.isEditing)
         .ignoresSafeArea(.keyboard)
@@ -63,20 +69,13 @@ struct MainTabView: View {
 
     @ViewBuilder
     private var actionTabLabel: some View {
-        if isTimelineEditing {
-            Label("完了", systemImage: "checkmark")
-        } else if isLiveActivityRefreshing {
+        if isLiveActivityRefreshing {
             ProgressView()
+        } else if isTimelineEditing {
+            Label("完了", systemImage: "checkmark")
         } else {
             Label("更新", systemImage: "arrow.clockwise")
         }
-    }
-
-    private var actionTabBadgeCount: Int {
-        if timelineViewModel.state.tutorialStep == .confirmComplete { return 1 }
-        guard !isTimelineEditing, !isLiveActivityRefreshing else { return 0 }
-        guard isLiveActivitySyncPending else { return 0 }
-        return 1
     }
 
     private var isTimelineEditing: Bool {
@@ -91,16 +90,24 @@ struct MainTabView: View {
         timelineViewModel.state.isLiveActivitySyncPending
     }
 
+    private func handleTabReselect(index: Int) {
+        // 0: timeline。設定タブ表示中の誤発火を防ぐ。
+        guard index == 0 else { return }
+        guard selectedTab == .timeline else { return }
+        timelineViewModel.handleTimelineTabReselect()
+    }
+
     private func handleTabSelectionChange(previous: TaskSheetTab, newValue: TaskSheetTab) {
         if newValue == .action {
             let restoreTo = previous.isContentTab ? previous : lastContentTab
-            performTrailingAction()
+            // 先にタブを戻してからアクション実行（アクションタブ画面が一瞬でも残らないようにする）
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
                 selectedTab = restoreTo
                 timelineViewModel.state.taskSheetSelectedTab = restoreTo
             }
+            performTrailingAction()
             return
         }
 

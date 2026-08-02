@@ -34,8 +34,8 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
     @Published var zoomScale: CGFloat = 1.0
     @Published var editingItemID: UUID?
 
-    // 長押しで空きに置く「仮」アイテム（日付・開始分）。タイトル入力後に確定 or 取り消し
-    @Published var pendingPlacement: (date: Date, startMinutes: Int)?
+    // 長押しで空きに置く「仮」アイテム。ドラッグで長さ決定 → タイトル入力 → 確定 / 取り消し
+    @Published var pendingPlacement: PendingPlacement?
 
     // 編集モード解除直後の再入を防ぐ（タップ解除と長押し・ドラッグ開始の競合対策）
     private var lastEditModeExitedAt: Date?
@@ -270,13 +270,60 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
     private let longPressPlaceDurationMinutes: Int = 30
     private let longPressPlaceStepMinutes: Int = 5
 
-   // 空き箇所を長押ししたとき: 30分単位で仮配置を開始（重なりがなければ pending にセット）
+    /// タイムラインタブ再タップ: 今日以外→今日、すでに今日→現在時刻へスクロール
+    func handleTimelineTabReselect() {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        if !cal.isDate(selectedDate, inSameDayAs: today) {
+            selectedDate = today
+            isTwoDayView = false
+        }
+        state.scrollToNowRequestID = UUID()
+    }
+
+   // 空き箇所を長押し開始: 開始時刻固定・初期30分の仮配置（タイトル入力前）
     func startPendingPlacement(date: Date, y: CGFloat) {
         let minutes = minutesFromOffset(y, on: date)
         let snapped = snap(minutes: minutes, step: longPressPlaceStepMinutes)
         let start = clampStart(start: snapped, duration: longPressPlaceDurationMinutes)
-        guard !isOverlapping(start: start, duration: longPressPlaceDurationMinutes, excluding: nil, on: date) else { return }
-        pendingPlacement = (date: Calendar.current.startOfDay(for: date), startMinutes: start)
+        let duration = clampedPendingDuration(
+            start: start,
+            proposedDuration: longPressPlaceDurationMinutes,
+            on: date
+        )
+        guard duration >= longPressPlaceStepMinutes else { return }
+        guard !isOverlapping(start: start, duration: duration, excluding: nil, on: date) else { return }
+        pendingPlacement = PendingPlacement(
+            date: Calendar.current.startOfDay(for: date),
+            startMinutes: start,
+            durationMinutes: duration,
+            isAwaitingTitle: false
+        )
+    }
+
+    /// 長押しドラッグ中: 開始は固定、指の Y で長さだけ更新
+    func updatePendingPlacementDuration(date: Date, y: CGFloat) {
+        guard var pending = pendingPlacement, !pending.isAwaitingTitle else { return }
+        guard Calendar.current.isDate(pending.date, inSameDayAs: date) else { return }
+        let endMinutes = snap(minutes: minutesFromOffset(y, on: date), step: longPressPlaceStepMinutes)
+        let proposed = max(longPressPlaceStepMinutes, endMinutes - pending.startMinutes)
+        pending.durationMinutes = clampedPendingDuration(
+            start: pending.startMinutes,
+            proposedDuration: proposed,
+            on: date
+        )
+        pendingPlacement = pending
+    }
+
+    /// 長押し終了: タイトル入力へ
+    func finishPendingPlacementGesture() {
+        guard var pending = pendingPlacement, !pending.isAwaitingTitle else { return }
+        guard pending.durationMinutes >= longPressPlaceStepMinutes else {
+            cancelPendingPlacement()
+            return
+        }
+        pending.isAwaitingTitle = true
+        pendingPlacement = pending
     }
 
    // 仮配置を確定（タイトルを付けてアイテム追加）
@@ -289,18 +336,50 @@ final class TimelineViewModel: ObservableObject, TimelineDelegate {
         }
         let newItem = TimelineItem(
             title: t,
-            durationMinutes: longPressPlaceDurationMinutes,
+            durationMinutes: pending.durationMinutes,
             startMinutes: pending.startMinutes,
             dropDate: pending.date
         )
         items.append(newItem)
         persistItems()
         pendingPlacement = nil
+        AnalyticsService.logTaskCreate(
+            placement: "timeline_long_press",
+            durationMinutes: pending.durationMinutes,
+            priority: TaskPriority.medium.displayName
+        )
+        _ = requestEnterEditMode(for: newItem.id)
     }
 
    // 仮配置を取り消し
     func cancelPendingPlacement() {
         pendingPlacement = nil
+    }
+
+    /// 重なり手前・終日境界で duration をクリップ（人工的な最大値は設けない）
+    private func clampedPendingDuration(start: Int, proposedDuration: Int, on date: Date) -> Int {
+        let dayEnd = 24 * 60
+        var duration = max(longPressPlaceStepMinutes, min(proposedDuration, dayEnd - start))
+        let nextStart = items.compactMap { item -> Int? in
+            guard let itemStart = item.startMinutes,
+                  let dropDate = item.dropDate,
+                  Calendar.current.isDate(dropDate, inSameDayAs: date),
+                  itemStart >= start
+            else { return nil }
+            // 開始位置そのものに既存タスクがある場合は 0
+            if itemStart == start { return start }
+            return itemStart
+        }.min()
+
+        if let nextStart {
+            duration = min(duration, max(0, nextStart - start))
+        }
+        // 開始〜終了が既存と重なる場合はさらに縮める
+        while duration >= longPressPlaceStepMinutes,
+              isOverlapping(start: start, duration: duration, excluding: nil, on: date) {
+            duration -= longPressPlaceStepMinutes
+        }
+        return max(0, duration)
     }
 
    // Debug: 指定時刻から指定分のテストタスクをタイムラインに追加

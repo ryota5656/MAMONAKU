@@ -36,16 +36,27 @@ struct TimelineDayColumnView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    if viewModel.pendingPlacement != nil {
+                    if viewModel.pendingPlacement?.isAwaitingTitle == true {
                         viewModel.cancelPendingPlacement()
                     }
                 }
 
-            LongPressLocationView { y in
-                viewModel.startPendingPlacement(date: date, y: y)
-            }
+            LongPressLocationView(
+                onBegan: { y in
+                    viewModel.startPendingPlacement(date: date, y: y)
+                },
+                onChanged: { y in
+                    viewModel.updatePendingPlacementDuration(date: date, y: y)
+                },
+                onEnded: { _ in
+                    viewModel.finishPendingPlacementGesture()
+                },
+                onCancelled: {
+                    viewModel.cancelPendingPlacement()
+                }
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .allowsHitTesting(viewModel.pendingPlacement == nil && !viewModel.editMode.isEditing)
+            .allowsHitTesting(canHandleLongPressPlacement)
 
             ForEach(items) { item in
                 if let startMinutes = item.startMinutes {
@@ -103,13 +114,34 @@ struct TimelineDayColumnView: View {
             }
 
             if let pending = viewModel.pendingPlacement, Calendar.current.isDate(pending.date, inSameDayAs: date) {
-                PendingPlacementCardView(
-                    onSubmit: { title in viewModel.commitPendingPlacement(title: title) },
-                    onCancel: { viewModel.cancelPendingPlacement() }
-                )
-                .frame(width: itemWidth, height: viewModel.heightForDuration(30))
-                .offset(x: 0, y: viewModel.yOffset(for: pending.startMinutes))
-                .zIndex(10)
+                let pendingHeight = viewModel.heightForDuration(pending.durationMinutes)
+                if pending.isAwaitingTitle {
+                    PendingPlacementCardView(
+                        onSubmit: { title in viewModel.commitPendingPlacement(title: title) },
+                        onCancel: { viewModel.cancelPendingPlacement() }
+                    )
+                    .frame(width: itemWidth, height: pendingHeight)
+                    .offset(x: 0, y: viewModel.yOffset(for: pending.startMinutes))
+                    .zIndex(10)
+                } else {
+                    ScheduleItemPreviewView(
+                        item: TimelineItem(
+                            title: TimelineViewModel.timeRangeText(
+                                startMinutes: pending.startMinutes,
+                                durationMinutes: pending.durationMinutes
+                            ),
+                            durationMinutes: pending.durationMinutes,
+                            startMinutes: pending.startMinutes,
+                            dropDate: pending.date
+                        ),
+                        showTimeRange: true
+                    )
+                    .padding(.trailing, 7)
+                    .frame(width: .infinity, height: pendingHeight)
+                    .offset(x: 0, y: viewModel.yOffset(for: pending.startMinutes))
+                    .zIndex(10)
+                    .allowsHitTesting(false)
+                }
             }
 
             if Calendar.current.isDate(date, inSameDayAs: Date()) {
@@ -167,6 +199,13 @@ struct TimelineDayColumnView: View {
     private func isSameDay(_ lhs: Date?, _ rhs: Date) -> Bool {
         guard let lhs else { return false }
         return Calendar.current.isDate(lhs, inSameDayAs: rhs)
+    }
+
+    private var canHandleLongPressPlacement: Bool {
+        // 編集中でも空き領域への長押し作成を許可する
+        guard let pending = viewModel.pendingPlacement else { return true }
+        // ドラッグ継続中はジェスチャを受け続ける
+        return !pending.isAwaitingTitle
     }
 }
 

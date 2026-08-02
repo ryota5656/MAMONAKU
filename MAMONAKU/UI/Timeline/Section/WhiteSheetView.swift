@@ -60,6 +60,10 @@ struct WhiteSheetView: View {
                             .onAppear {
                                 centerCurrentTimeIfNeeded(on: date, with: scrollProxy)
                             }
+                            .onChange(of: viewModel.state.scrollToNowRequestID) { _, requestID in
+                                guard requestID != nil else { return }
+                                scrollToCurrentTime(on: date, with: scrollProxy)
+                            }
                         }
                         .tag(date)
                     }
@@ -168,14 +172,17 @@ struct WhiteSheetView: View {
     private func centerCurrentTimeIfNeeded(on date: Date, with scrollProxy: ScrollViewProxy) {
         guard !hasCenteredCurrentTimeOnLaunch else { return }
         guard Calendar.current.isDateInToday(date) else { return }
+        hasCenteredCurrentTimeOnLaunch = true
+        scrollToCurrentTime(on: date, with: scrollProxy)
+    }
+
+    private func scrollToCurrentTime(on date: Date, with scrollProxy: ScrollViewProxy) {
+        guard Calendar.current.isDateInToday(date) else { return }
         Task { @MainActor in
-            for delay in [50_000_000] {
-                try? await Task.sleep(nanoseconds: UInt64(delay))
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    scrollProxy.scrollTo(currentTimeAnchorID, anchor: UnitPoint(x: 0.5, y: 0.1))
-                }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            withAnimation(.easeInOut(duration: 0.25)) {
+                scrollProxy.scrollTo(currentTimeAnchorID, anchor: UnitPoint(x: 0.5, y: 0.1))
             }
-            hasCenteredCurrentTimeOnLaunch = true
         }
     }
 }

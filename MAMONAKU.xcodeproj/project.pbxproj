@@ -92,6 +92,9 @@
 		4BAB881F2F383FB200B75F3D /* Exceptions for "MAMONAKU" folder in "MAMONAKU" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"Config/Firebase/GoogleService-Info-PROD.plist",
+				"Config/Firebase/GoogleService-Info-STG.plist",
+				"GoogleService-Info.plist",
 				Info.plist,
 			);
 			target = 4BD9F7CC2F1D16EC0094BC8C /* MAMONAKU */;
@@ -241,6 +244,7 @@
 				4BD9F7C92F1D16EC0094BC8C /* Sources */,
 				4BD9F7CA2F1D16EC0094BC8C /* Frameworks */,
 				4BD9F7CB2F1D16EC0094BC8C /* Resources */,
+				4BFIREBASECOPY00000001 /* Copy GoogleService-Info */,
 				4BAB881D2F3794F400B75F3D /* Embed Frameworks */,
 				4B0F1A062FF0BD4A00637591 /* Embed Foundation Extensions */,
 			);
@@ -423,6 +427,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4BFIREBASECOPY00000001 /* Copy GoogleService-Info */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/MAMONAKU/Config/Firebase/GoogleService-Info-STG.plist",
+				"$(SRCROOT)/MAMONAKU/Config/Firebase/GoogleService-Info-PROD.plist",
+				"$(SRCROOT)/scripts/copy-google-service-info.sh",
+			);
+			name = "Copy GoogleService-Info";
+			outputPaths = (
+				"$(SRCROOT)/MAMONAKU/GoogleService-Info.plist",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/scripts/copy-google-service-info.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		4BD9F7C92F1D16EC0094BC8C /* Sources */ = {

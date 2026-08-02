@@ -1,5 +1,9 @@
 {
   "projects": {
-    "default": "mamonaku-98306"
-  }
+    "default": "mamonaku-98306",
+    "prod": "mamonaku-98306",
+    "stg": "mamonaku-stg"
+  },
+  "targets": {},
+  "etags": {}
 }

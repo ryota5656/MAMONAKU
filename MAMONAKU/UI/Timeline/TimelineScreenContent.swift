@@ -206,12 +206,14 @@ struct TimelineScreenContent: View {
                 .shadow(color: Color.primary.opacity(0.2), radius: 8, x: 0, y: 4)
         }
         .frame(width: 35, height: 35)
+        // 点が親の円でクリップされないよう、余白付きフレームに重ねる
+        .padding(4)
         .overlay(alignment: .topTrailing) {
             if state.isLiveActivitySyncPending, state.tutorialStep == nil {
                 Circle()
                     .fill(Color.orange)
                     .frame(width: 9, height: 9)
-                    .offset(x: 2, y: -2)
+                    .accessibilityLabel("未反映")
             }
         }
         .contentShape(Circle())

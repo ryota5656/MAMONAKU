@@ -9,7 +9,7 @@ final class LiveActivityPushService {
 
     static let apnsTopic = "sairyo.MAMONAKU.push-type.liveactivity"
     static let attributesType = "MAMONAKULiveActivityAttributes"
-    static let syncEndpoint = "https://us-central1-mamonaku-98306.cloudfunctions.net/syncLiveActivitySchedule"
+    static let syncEndpoint = AppEnvironment.cloudFunctionURL("syncLiveActivitySchedule")
 
     private let logger = Logger(subsystem: "sairyo.MAMONAKU", category: "LiveActivityPush")
     private var pushToStartTask: Task<Void, Never>?
