@@ -242,6 +242,95 @@ final class TimelineViewModelSpec: AsyncSpec {
                 expect(harness.repository.items.first?.priority).to(equal(.high))
             }
 
+            it("繰り返すと終了日までの予定を作り、一覧からまとめて消せる") { @MainActor in
+                let harness = Harness()
+                let weekday = TestTime.calendar.component(.weekday, from: today)
+                harness.viewModel.timelineDidTapRoutines()
+                expect(harness.viewModel.state.sheet).to(equal(.routines))
+                harness.viewModel.dismissSheet()
+
+                let didCreate = harness.viewModel.createTask(
+                    title: "バイト",
+                    durationMinutes: 120,
+                    priority: .medium,
+                    startDate: TestTime.date(hour: 18),
+                    endDate: TestTime.date(hour: 22),
+                    repeatRule: RoutineRepeat(weekdays: [weekday], endDate: today)
+                )
+
+                expect(didCreate).to(beTrue())
+                expect(harness.viewModel.state.sheet).to(beNil())
+                let didSync = await eventually { harness.liveActivity.syncAllSchedulesCount == 1 }
+                expect(didSync).to(beTrue())
+                expect(harness.repository.routines.map(\.title)).to(equal(["バイト"]))
+                expect(harness.repository.items.map(\.routineID)).to(equal([harness.repository.routines.first?.id]))
+
+                let routineID = harness.repository.routines[0].id
+                harness.viewModel.deleteRoutine(id: routineID)
+
+                expect(harness.repository.deletedRoutineIDs).to(equal([routineID]))
+                expect(harness.repository.items).to(beEmpty())
+                expect(harness.repository.routines).to(beEmpty())
+                expect(harness.viewModel.state.isLiveActivitySyncPending).to(beTrue())
+            }
+
+            it("一覧から編集すると、紐づいている予定へ反映し、一覧は開いたままにする") { @MainActor in
+                let harness = Harness()
+                let weekday = TestTime.calendar.component(.weekday, from: today)
+                harness.viewModel.createTask(
+                    title: "バイト",
+                    durationMinutes: 120,
+                    priority: .low,
+                    startDate: TestTime.date(hour: 18),
+                    endDate: TestTime.date(hour: 22),
+                    repeatRule: RoutineRepeat(weekdays: [weekday], endDate: today)
+                )
+                harness.viewModel.timelineDidTapRoutines()
+                let routineID = harness.repository.routines[0].id
+
+                let didSave = harness.viewModel.updateRoutine(
+                    id: routineID,
+                    title: "夜バイト",
+                    priority: .high,
+                    startDate: TestTime.date(hour: 19),
+                    endDate: TestTime.date(hour: 22),
+                    repeatRule: RoutineRepeat(weekdays: [weekday], endDate: today)
+                )
+
+                expect(didSave).to(beTrue())
+                let didSync = await eventually { harness.liveActivity.syncAllSchedulesCount == 2 }
+                expect(didSync).to(beTrue())
+                expect(harness.viewModel.state.sheet).to(equal(.routines))
+                expect(harness.repository.routines.first?.title).to(equal("夜バイト"))
+                expect(harness.repository.items.first?.title).to(equal("夜バイト"))
+                expect(harness.repository.items.first?.startMinutes).to(equal(19 * 60))
+                expect(harness.repository.items.first?.routineID).to(equal(routineID))
+            }
+
+            it("1日だけ時刻をずらすと、その日は一括削除に含まれない") { @MainActor in
+                let harness = Harness()
+                let weekday = TestTime.calendar.component(.weekday, from: today)
+                harness.viewModel.createTask(
+                    title: "バイト",
+                    durationMinutes: 120,
+                    priority: .low,
+                    startDate: TestTime.date(hour: 18),
+                    endDate: TestTime.date(hour: 22),
+                    repeatRule: RoutineRepeat(
+                        weekdays: [weekday],
+                        endDate: TestTime.calendar.date(byAdding: .day, value: 7, to: today)!
+                    )
+                )
+                let movedID = harness.repository.items[0].id
+                harness.viewModel.timelineDidDropItem(id: movedID, on: today, y: harness.y(atMinutes: 19 * 60))
+
+                let routineID = harness.repository.items.compactMap(\.routineID).first
+                expect(harness.repository.items.first { $0.id == movedID }?.routineID).to(beNil())
+                harness.viewModel.deleteRoutine(id: routineID!)
+
+                expect(harness.repository.items.map(\.id)).to(equal([movedID]))
+            }
+
             it("削除すると保存先からも消し、Live Activity を未反映にする") { @MainActor in
                 let task = TimelineItem.stock("資料作成")
                 let harness = Harness(items: [task])

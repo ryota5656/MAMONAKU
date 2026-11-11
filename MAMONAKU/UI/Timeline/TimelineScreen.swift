@@ -41,13 +41,14 @@ struct TimelineScreen: View {
             TaskCreateSheetView(
                 isSubscribed: isSubscribed,
                 onCancel: { viewModel.dismissSheet() },
-                onCreate: { title, durationMinutes, priority, startDate, endDate in
+                onCreate: { title, durationMinutes, priority, startDate, endDate, repeatRule in
                     viewModel.createTask(
                         title: title,
                         durationMinutes: durationMinutes,
                         priority: priority,
                         startDate: startDate,
-                        endDate: endDate
+                        endDate: endDate,
+                        repeatRule: repeatRule
                     )
                 }
             )
@@ -70,6 +71,24 @@ struct TimelineScreen: View {
             TimelineDatePickerSheet(
                 selectedDate: viewModel.state.selectedDate,
                 onSelectDate: { viewModel.timelineDidSelectDate($0) },
+                onClose: { viewModel.dismissSheet() }
+            )
+        case .routines:
+            RoutineListSheetView(
+                routines: viewModel.state.routines,
+                items: viewModel.state.items,
+                isSubscribed: isSubscribed,
+                onUpdate: { id, title, priority, startDate, endDate, repeatRule in
+                    viewModel.updateRoutine(
+                        id: id,
+                        title: title,
+                        priority: priority,
+                        startDate: startDate,
+                        endDate: endDate,
+                        repeatRule: repeatRule
+                    )
+                },
+                onDelete: { viewModel.deleteRoutine(id: $0) },
                 onClose: { viewModel.dismissSheet() }
             )
         }

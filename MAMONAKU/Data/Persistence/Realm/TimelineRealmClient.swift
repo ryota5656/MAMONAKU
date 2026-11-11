@@ -38,6 +38,61 @@ nonisolated final class TimelineRealmClient {
             .map { $0.toTimelineItem() }
     }
 
+    func fetchRoutines() -> [TimelineRoutine] {
+        let realm = realmProvider.makeRealm()
+        return realm.objects(RealmTimelineRoutine.self).map { $0.toTimelineRoutine() }
+    }
+
+    func saveRoutine(_ routine: TimelineRoutine) {
+        let realm = realmProvider.makeRealm()
+        do {
+            try realm.write {
+                if let existing = realm.object(ofType: RealmTimelineRoutine.self, forPrimaryKey: routine.id.uuidString) {
+                    realm.delete(existing)
+                }
+                realm.add(RealmTimelineRoutine(routine: routine))
+            }
+        } catch {
+            AppLog.storage.error("Failed to save routine: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// 予定が1件も紐づいていないルーティンを消す。
+    func deleteUnlinkedRoutines(linkedIDs: Set<UUID>) {
+        let linked = Set(linkedIDs.map(\.uuidString))
+        let realm = realmProvider.makeRealm()
+        let stale = Array(realm.objects(RealmTimelineRoutine.self).filter { !linked.contains($0.id) })
+        guard !stale.isEmpty else { return }
+        do {
+            try realm.write {
+                realm.delete(stale)
+            }
+        } catch {
+            AppLog.storage.error("Failed to prune routines: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// ルーティンと、まだ紐づいている予定を消す。
+    /// - Returns: 消した予定に紐づいていたカレンダーイベントの識別子。
+    func deleteRoutine(id: UUID) -> [String] {
+        let realm = realmProvider.makeRealm()
+        let idString = id.uuidString
+        let linked = Array(realm.objects(RealmTimelineItem.self).filter { $0.routineID == idString })
+        let eventIdentifiers = linked.compactMap(\.eventIdentifier)
+        do {
+            try realm.write {
+                realm.delete(linked)
+                if let routine = realm.object(ofType: RealmTimelineRoutine.self, forPrimaryKey: idString) {
+                    realm.delete(routine)
+                }
+            }
+        } catch {
+            AppLog.storage.error("Failed to delete routine: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+        return eventIdentifiers
+    }
+
     func isEmpty() -> Bool {
         let realm = realmProvider.makeRealm()
         return realm.objects(RealmTimelineItem.self).isEmpty
@@ -163,11 +218,24 @@ nonisolated final class TimelineRealmClient {
     }
 
     private static func apply(event: CalendarEventImport, to item: RealmTimelineItem) {
-        let startMinutes = event.isAllDay ? nil : DayTime.minutesSinceMidnight(of: event.startDate)
+        let calendar = Calendar.current
+        let startMinutes = event.isAllDay ? nil : DayTime.minutesSinceMidnight(of: event.startDate, calendar: calendar)
+        let dropDate = calendar.startOfDay(for: event.startDate)
+        let durationMinutes = max(1, Int(event.endDate.timeIntervalSince(event.startDate) / 60))
+        let dayChanged: Bool
+        switch item.dropDate {
+        case let current?:
+            dayChanged = !calendar.isDate(current, inSameDayAs: dropDate)
+        case nil:
+            dayChanged = true
+        }
+        if item.startMinutes != startMinutes || dayChanged || item.durationMinutes != durationMinutes {
+            item.routineID = nil
+        }
         item.title = event.title
         item.startMinutes = startMinutes
-        item.dropDate = Calendar.current.startOfDay(for: event.startDate)
-        item.durationMinutes = max(1, Int(event.endDate.timeIntervalSince(event.startDate) / 60))
+        item.dropDate = dropDate
+        item.durationMinutes = durationMinutes
         item.isAllDay = event.isAllDay
         item.eventIdentifier = event.eventIdentifier
     }

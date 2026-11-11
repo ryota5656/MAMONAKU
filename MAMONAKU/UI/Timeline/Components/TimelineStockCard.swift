@@ -17,6 +17,7 @@ struct TimelineStockCard: View {
     /// チュートリアル中の強調表示
     var isTutorialHighlighted = false
     let onTapAdd: () -> Void
+    let onTapRoutines: () -> Void
     let onTapItem: (UUID) -> Void
     let onDragBegan: (UUID) -> Void
     let onDragEnded: () -> Void
@@ -65,32 +66,46 @@ struct TimelineStockCard: View {
     // MARK: - ヘッダー（タップで作成）
 
     private var header: some View {
-        Button(action: onTapAdd) {
-            HStack(spacing: 8) {
-                Text(isDropTargeted ? "タスクリストへ戻す" : "Stock")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(isDropTargeted ? theme.accent : theme.textPrimary)
-                Spacer()
-                if isDropTargeted {
-                    Image(systemName: "tray.and.arrow.down.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(theme.accent)
-                } else {
-                    if !stockItems.isEmpty {
-                        Text("\(stockItems.count)件")
-                            .font(.system(size: 13, weight: .medium))
+        HStack(spacing: 4) {
+            Button(action: onTapAdd) {
+                HStack(spacing: 8) {
+                    Text(isDropTargeted ? "タスクリストへ戻す" : "Stock")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(isDropTargeted ? theme.accent : theme.textPrimary)
+                    Spacer()
+                    if isDropTargeted {
+                        Image(systemName: "tray.and.arrow.down.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(theme.accent)
+                    } else {
+                        if !stockItems.isEmpty {
+                            Text("\(stockItems.count)件")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(theme.textSecondary)
+                        }
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(theme.textSecondary)
                     }
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(theme.textSecondary)
                 }
+                .padding(.vertical, 2)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+
+            if !isDropTargeted {
+                Button(action: onTapRoutines) {
+                    Image(systemName: "repeat")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(theme.textSecondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("ルーティン")
+            }
         }
-        .buttonStyle(.plain)
         .allowsHitTesting(!isDraggingPlacedItem)
     }
 
@@ -205,6 +220,7 @@ private struct StockCardGlassBackground: ViewModifier {
             ],
             isDraggingPlacedItem: false,
             onTapAdd: {},
+            onTapRoutines: {},
             onTapItem: { _ in },
             onDragBegan: { _ in },
             onDragEnded: {},

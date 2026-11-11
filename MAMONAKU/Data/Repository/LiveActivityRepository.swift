@@ -16,6 +16,9 @@ protocol LiveActivityRepository: AnyObject {
     /// サーバーへ送れなかった場合は未反映のままにし、次の予定への切り替えを端末側で予約する。
     func commitSync() async
 
+    /// 配置済みの予定を、日を限らず Firestore に書く。Live Activity の表示は変えない。
+    func syncAllSchedules() async
+
     /// 表示中の Live Activity の先頭の予定がすでに始まっていたら、次の予定に切り替える。
     func refreshIfOverdue() async
 }

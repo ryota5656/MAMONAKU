@@ -55,6 +55,7 @@ final class TimelineViewModel: TimelineDelegate {
 
         var state = TimelineViewState(selectedDate: calendar.startOfDay(for: now()))
         state.items = repository.fetchItems()
+        state.routines = repository.fetchRoutines()
         state.isLiveActivitySyncPending = liveActivityRepository.isSyncPending
         self.state = state
 
@@ -85,29 +86,55 @@ final class TimelineViewModel: TimelineDelegate {
     }
 
     /// 作成シートの「作成」。開始・終了の指定があればタイムラインへ、無ければ Stock へ追加する。
+    /// `repeatRule` があるときは終了日までの該当曜日に同じ時刻でまとめて作る。
+    /// - Returns: 1件以上作れたか。作れないときはシートを開いたままにする。
+    @discardableResult
     func createTask(
         title: String,
         durationMinutes: Int,
         priority: TaskPriority,
         startDate: Date?,
-        endDate: Date?
-    ) {
-        state.sheet = nil
-        guard let creation = editUseCase.create(
-            title: title,
-            durationMinutes: durationMinutes,
-            priority: priority,
-            startDate: startDate,
-            endDate: endDate,
-            in: state.items
-        ) else { return }
+        endDate: Date?,
+        repeatRule: RoutineRepeat? = nil
+    ) -> Bool {
+        let creation: TimelineItemEditUseCase.Creation?
+        if let repeatRule, let startDate, let endDate {
+            creation = editUseCase.createRoutine(
+                title: title,
+                priority: priority,
+                startDate: startDate,
+                endDate: endDate,
+                repeatRule: repeatRule,
+                in: state.items
+            )
+        } else {
+            creation = editUseCase.create(
+                title: title,
+                durationMinutes: durationMinutes,
+                priority: priority,
+                startDate: startDate,
+                endDate: endDate,
+                in: state.items
+            )
+        }
+        guard let creation else { return false }
 
+        if let routine = creation.routine {
+            repository.saveRoutine(routine)
+        }
         commit(creation.items)
+        if creation.routine != nil {
+            syncSchedulesToFirebase()
+        }
+        state.sheet = nil
         AnalyticsClient.logTaskCreate(
-            placement: creation.placement == .timeline ? "timeline" : "stock",
+            placement: creation.routine == nil
+                ? (creation.placement == .timeline ? "timeline" : "stock")
+                : "routine",
             durationMinutes: creation.createdItem.durationMinutes,
             priority: priority.displayName
         )
+        return true
     }
 
     /// 編集シートの「保存」。
@@ -127,9 +154,48 @@ final class TimelineViewModel: TimelineDelegate {
     func deleteTask(id: UUID) {
         state.sheet = nil
         repository.deleteItem(id: id)
+        state.routines = repository.fetchRoutines()
         setItems(repository.fetchItems())
         notificationRepository.rescheduleAll(items: state.items)
         markLiveActivitySyncPending()
+        AnalyticsClient.log(AnalyticsClient.Event.taskDelete)
+    }
+
+    /// ルーティン一覧からの編集。まだ紐づいている予定へ反映し、一覧は開いたままにする。
+    /// - Returns: 1件以上残して保存できたか。
+    @discardableResult
+    func updateRoutine(
+        id: UUID,
+        title: String,
+        priority: TaskPriority,
+        startDate: Date,
+        endDate: Date,
+        repeatRule: RoutineRepeat
+    ) -> Bool {
+        guard let revision = editUseCase.updateRoutine(
+            id: id,
+            title: title,
+            priority: priority,
+            startDate: startDate,
+            endDate: endDate,
+            repeatRule: repeatRule,
+            in: state.items
+        ) else { return false }
+
+        repository.saveRoutine(revision.routine)
+        commit(revision.items)
+        syncSchedulesToFirebase()
+        return true
+    }
+
+    /// ルーティン一覧の「削除」。紐づいている予定をまとめて消し、時刻を変えて外れた日は残す。
+    func deleteRoutine(id: UUID) {
+        repository.deleteRoutine(id: id)
+        state.routines = repository.fetchRoutines()
+        setItems(repository.fetchItems())
+        notificationRepository.rescheduleAll(items: state.items)
+        markLiveActivitySyncPending()
+        syncSchedulesToFirebase()
         AnalyticsClient.log(AnalyticsClient.Event.taskDelete)
     }
 
@@ -327,6 +393,10 @@ final class TimelineViewModel: TimelineDelegate {
         state.sheet = .createTask
     }
 
+    func timelineDidTapRoutines() {
+        state.sheet = .routines
+    }
+
     func timelineDidTapStockItem(id: UUID) {
         guard let item = item(id: id) else { return }
         state.sheet = .editTask(item)
@@ -378,10 +448,16 @@ final class TimelineViewModel: TimelineDelegate {
         }
     }
 
+    /// 繰り返しの全日を Firestore に書く。Live Activity の表示更新は完了ボタンに任せる。
+    private func syncSchedulesToFirebase() {
+        Task { await liveActivityRepository.syncAllSchedules() }
+    }
+
     /// 編集結果を画面と保存先に反映し、通知を登録し直して、Live Activity を「未反映」にする。
     private func commit(_ items: [TimelineItem]) {
         setItems(items)
         repository.saveItems(items)
+        state.routines = repository.fetchRoutines()
         notificationRepository.rescheduleAll(items: items)
         markLiveActivitySyncPending()
     }
@@ -398,7 +474,9 @@ final class TimelineViewModel: TimelineDelegate {
 
     private func reloadItemsIfChanged() {
         let stored = repository.fetchItems()
-        guard stored != state.items else { return }
+        let routines = repository.fetchRoutines()
+        guard stored != state.items || routines != state.routines else { return }
+        state.routines = routines
         setItems(stored)
         notificationRepository.rescheduleAll(items: stored)
         markLiveActivitySyncPending()

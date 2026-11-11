@@ -4,6 +4,8 @@ import Foundation
 struct TimelineViewState: Equatable {
     /// 全予定（タイムライン配置済み + Stock）。配列の順序が Stock の並び順になる。
     var items: [TimelineItem] = []
+    /// 繰り返し登録したルーティン。紐づく予定が無くなったものは含まない。
+    var routines: [TimelineRoutine] = []
     /// 表示中の日（その日の 0 時）
     var selectedDate: Date
     /// タイムラインの寸法（ピンチによる拡大率を含む）
@@ -67,12 +69,15 @@ enum TimelineSheet: Identifiable, Equatable {
     case editTask(TimelineItem)
     /// 日付選択
     case datePicker
+    /// ルーティン一覧（一括削除）
+    case routines
 
     var id: String {
         switch self {
         case .createTask: return "createTask"
         case .editTask(let item): return "editTask-\(item.id.uuidString)"
         case .datePicker: return "datePicker"
+        case .routines: return "routines"
         }
     }
 }

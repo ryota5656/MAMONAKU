@@ -4,13 +4,13 @@ import os
 
 /// Realm の構成（保存先・スキーマバージョン）を持ち、Realm を開く。
 nonisolated final class RealmProvider {
-    static let schemaVersion: UInt64 = 5
+    static let schemaVersion: UInt64 = 6
 
     let configuration: Realm.Configuration
 
     /// - Parameter appGroupID: Realm ファイルを置く App Group。コンテナが取得できない場合は Realm 既定の場所を使う。
     init(appGroupID: String = AppGroup.id) {
-        // スキーマ 2〜5 はプロパティ追加のみ（eventIdentifier 等 / isCompleted / priority / isAllDay）で、
+        // スキーマ 2〜6 はプロパティ追加と新規オブジェクト（routineID / TimelineRoutine）のみで、
         // Realm の自動マイグレーションが既定値を補うため、マイグレーション処理は空でよい。
         var configuration = Realm.Configuration(
             schemaVersion: Self.schemaVersion,

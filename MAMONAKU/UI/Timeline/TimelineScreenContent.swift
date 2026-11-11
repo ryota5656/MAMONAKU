@@ -42,6 +42,7 @@ struct TimelineScreenContent: View {
             isDraggingPlacedItem: state.isDraggingPlacedItem,
             isTutorialHighlighted: state.tutorialStep == .placeTaskAfterNow,
             onTapAdd: { delegate?.timelineDidTapAddTask() },
+            onTapRoutines: { delegate?.timelineDidTapRoutines() },
             onTapItem: { delegate?.timelineDidTapStockItem(id: $0) },
             onDragBegan: { delegate?.timelineDidBeginDraggingStockItem(id: $0) },
             onDragEnded: { delegate?.timelineDidEndDraggingStockItem() },
@@ -115,6 +116,7 @@ final class PreviewTimelineDelegate: TimelineDelegate {
     func timelineDidDropItem(id: UUID, on date: Date, y: CGFloat) {}
     func timelineDidFinishDrop() {}
     func timelineDidTapAddTask() {}
+    func timelineDidTapRoutines() {}
     func timelineDidTapStockItem(id: UUID) {}
     func timelineDidBeginDraggingStockItem(id: UUID) {}
     func timelineDidEndDraggingStockItem() {}

@@ -40,6 +40,40 @@ struct TaskPriorityRow: View {
     }
 }
 
+/// ルーティンの曜日選択（月曜始まり）。
+struct RoutineWeekdayPicker: View {
+    @Environment(\.appTheme) private var theme
+    @Binding var selectedWeekdays: Set<Int>
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(RoutineCalendar.orderedWeekdays, id: \.self) { weekday in
+                let isSelected = selectedWeekdays.contains(weekday)
+                Button {
+                    if isSelected {
+                        selectedWeekdays.remove(weekday)
+                    } else {
+                        selectedWeekdays.insert(weekday)
+                    }
+                } label: {
+                    Text(RoutineCalendar.symbol(for: weekday))
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 32, height: 32)
+                        .background(
+                            isSelected ? theme.accent.opacity(0.18) : Color.clear,
+                            in: Circle()
+                        )
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(isSelected ? theme.accent : theme.textSecondary)
+                .accessibilityLabel(RoutineCalendar.symbol(for: weekday))
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+}
+
 #Preview("TaskFormRows") {
     @Previewable @State var durationMinutes = 30
     @Previewable @State var priority = TaskPriority.medium

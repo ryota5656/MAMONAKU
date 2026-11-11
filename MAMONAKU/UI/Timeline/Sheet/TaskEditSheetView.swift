@@ -37,11 +37,17 @@ struct TaskEditSheetView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("タスク") {
+                Section {
                     TextField("タイトル", text: $title)
                         .submitLabel(.done)
                     TaskDurationPickerRow(durationMinutes: $durationMinutes)
                     TaskPriorityRow(priority: $priority, isSubscribed: isSubscribed)
+                } header: {
+                    Text("タスク")
+                } footer: {
+                    if item.routineID != nil {
+                        Text("時間を変えて保存すると、この日だけルーティンから外れます。")
+                    }
                 }
             }
             .navigationTitle("タスクを編集")

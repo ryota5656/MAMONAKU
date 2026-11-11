@@ -27,6 +27,8 @@ nonisolated struct TimelineItemEditUseCase: Sendable {
     static let longPressStepMinutes = 5
     /// 日時指定で作成するときに所要時間を丸める刻み（端数は切り捨て）
     static let createStepMinutes = 5
+    /// ルーティンの開始日〜終了日の最大日数（両端を含む。365 なら 366 日）
+    static let maximumRoutineSpanDays = 365
 
     var calendar: Calendar = .current
 
@@ -55,8 +57,12 @@ nonisolated struct TimelineItemEditUseCase: Sendable {
         }
 
         var updated = items
-        updated[index].startMinutes = start
-        updated[index].dropDate = calendar.startOfDay(for: date)
+        applyScheduleChange(
+            to: &updated[index],
+            startMinutes: start,
+            dropDate: calendar.startOfDay(for: date),
+            durationMinutes: duration
+        )
         return updated
     }
 
@@ -64,8 +70,12 @@ nonisolated struct TimelineItemEditUseCase: Sendable {
     func returnToStock(itemID: UUID, in items: [TimelineItem]) -> [TimelineItem]? {
         guard let index = items.firstIndex(where: { $0.id == itemID }) else { return nil }
         var updated = items
-        updated[index].startMinutes = nil
-        updated[index].dropDate = nil
+        applyScheduleChange(
+            to: &updated[index],
+            startMinutes: nil,
+            dropDate: nil,
+            durationMinutes: updated[index].durationMinutes
+        )
         return updated
     }
 
@@ -97,7 +107,12 @@ nonisolated struct TimelineItemEditUseCase: Sendable {
         }
 
         var updated = items
-        updated[index].durationMinutes = duration
+        applyScheduleChange(
+            to: &updated[index],
+            startMinutes: start,
+            dropDate: items[index].dropDate,
+            durationMinutes: duration
+        )
         return updated
     }
 
@@ -181,6 +196,8 @@ nonisolated struct TimelineItemEditUseCase: Sendable {
         let items: [TimelineItem]
         let createdItem: TimelineItem
         let placement: Placement
+        /// 繰り返しで作ったときだけ入る
+        let routine: TimelineRoutine?
     }
 
     /// 予定を追加する。
@@ -215,7 +232,181 @@ nonisolated struct TimelineItemEditUseCase: Sendable {
             }
         }
 
-        return Creation(items: items + [newItem], createdItem: newItem, placement: placement)
+        return Creation(items: items + [newItem], createdItem: newItem, placement: placement, routine: nil)
+    }
+
+    /// 開始日〜終了日のうち、選んだ曜日に同じ時刻の予定をまとめて作る。
+    ///
+    /// 他の予定と重なる日は飛ばす。1件も置けない、曜日が空、期間が範囲外のときは nil。
+    func createRoutine(
+        title: String,
+        priority: TaskPriority,
+        startDate: Date,
+        endDate: Date,
+        repeatRule: RoutineRepeat,
+        in items: [TimelineItem]
+    ) -> Creation? {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, !repeatRule.weekdays.isEmpty else { return nil }
+
+        let startDay = calendar.startOfDay(for: startDate)
+        let endDay = calendar.startOfDay(for: repeatRule.endDate)
+        guard endDay >= startDay else { return nil }
+        let span = calendar.dateComponents([.day], from: startDay, to: endDay).day ?? 0
+        guard span <= Self.maximumRoutineSpanDays else { return nil }
+
+        let start = DayTime.minutesSinceMidnight(of: startDate, calendar: calendar)
+        let endClock = DayTime.minutesSinceMidnight(of: endDate, calendar: calendar)
+        guard endClock > start else { return nil }
+        let step = Self.createStepMinutes
+        let duration = clampDuration(max(step, (endClock - start) / step * step), start: start)
+
+        let routineID = UUID()
+        var created: [TimelineItem] = []
+        var occupied = items
+        var day = startDay
+        while day <= endDay {
+            let weekday = calendar.component(.weekday, from: day)
+            if repeatRule.weekdays.contains(weekday),
+               !isOverlapping(start: start, duration: duration, excluding: nil, on: day, in: occupied) {
+                let item = TimelineItem(
+                    title: title,
+                    durationMinutes: duration,
+                    startMinutes: start,
+                    dropDate: day,
+                    priority: priority,
+                    routineID: routineID
+                )
+                created.append(item)
+                occupied.append(item)
+            }
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        guard let createdItem = created.first else { return nil }
+
+        let routine = TimelineRoutine(
+            id: routineID,
+            title: title,
+            startMinutes: start,
+            durationMinutes: duration,
+            priority: priority,
+            weekdays: RoutineCalendar.orderedWeekdays.filter { repeatRule.weekdays.contains($0) },
+            startDate: startDay,
+            endDate: endDay
+        )
+        return Creation(items: items + created, createdItem: createdItem, placement: .timeline, routine: routine)
+    }
+
+    /// ルーティン編集の結果。
+    struct RoutineRevision: Equatable, Sendable {
+        let items: [TimelineItem]
+        let routine: TimelineRoutine
+    }
+
+    /// ルーティンの型と、まだ紐づいている予定をまとめて更新する。
+    ///
+    /// 曜日や期間から外れた日は削除する。新しい時刻が他の予定と重なる日は、元の時刻のままルーティンから外す。
+    /// 時刻を変えてすでに外れている日は変えない。1件も残らないときは nil。
+    func updateRoutine(
+        id: UUID,
+        title: String,
+        priority: TaskPriority,
+        startDate: Date,
+        endDate: Date,
+        repeatRule: RoutineRepeat,
+        in items: [TimelineItem]
+    ) -> RoutineRevision? {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, !repeatRule.weekdays.isEmpty else { return nil }
+
+        let startDay = calendar.startOfDay(for: startDate)
+        let endDay = calendar.startOfDay(for: repeatRule.endDate)
+        guard endDay >= startDay else { return nil }
+        let span = calendar.dateComponents([.day], from: startDay, to: endDay).day ?? 0
+        guard span <= Self.maximumRoutineSpanDays else { return nil }
+
+        let start = DayTime.minutesSinceMidnight(of: startDate, calendar: calendar)
+        let endClock = DayTime.minutesSinceMidnight(of: endDate, calendar: calendar)
+        guard endClock > start else { return nil }
+        let step = Self.createStepMinutes
+        let duration = clampDuration(max(step, (endClock - start) / step * step), start: start)
+
+        var desiredDays: [Date] = []
+        var day = startDay
+        while day <= endDay {
+            if repeatRule.weekdays.contains(calendar.component(.weekday, from: day)) {
+                desiredDays.append(day)
+            }
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        guard !desiredDays.isEmpty else { return nil }
+
+        var kept: [TimelineItem] = []
+        var linkedByDay: [Date: TimelineItem] = [:]
+        for item in items {
+            guard item.routineID == id, let dropDate = item.dropDate else {
+                var detached = item
+                if item.routineID == id {
+                    detached.routineID = nil
+                }
+                kept.append(detached)
+                continue
+            }
+            let itemDay = calendar.startOfDay(for: dropDate)
+            if linkedByDay[itemDay] == nil {
+                linkedByDay[itemDay] = item
+            } else {
+                var detached = item
+                detached.routineID = nil
+                kept.append(detached)
+            }
+        }
+
+        var occupied = kept
+        var seriesItems: [TimelineItem] = []
+        for day in desiredDays {
+            if var existing = linkedByDay[day] {
+                if isOverlapping(start: start, duration: duration, excluding: existing.id, on: day, in: occupied) {
+                    existing.routineID = nil
+                    kept.append(existing)
+                    occupied.append(existing)
+                } else {
+                    existing.title = title
+                    existing.startMinutes = start
+                    existing.durationMinutes = duration
+                    existing.priority = priority
+                    existing.dropDate = day
+                    seriesItems.append(existing)
+                    occupied.append(existing)
+                }
+            } else if !isOverlapping(start: start, duration: duration, excluding: nil, on: day, in: occupied) {
+                let item = TimelineItem(
+                    title: title,
+                    durationMinutes: duration,
+                    startMinutes: start,
+                    dropDate: day,
+                    priority: priority,
+                    routineID: id
+                )
+                seriesItems.append(item)
+                occupied.append(item)
+            }
+        }
+        guard !seriesItems.isEmpty else { return nil }
+
+        let routine = TimelineRoutine(
+            id: id,
+            title: title,
+            startMinutes: start,
+            durationMinutes: duration,
+            priority: priority,
+            weekdays: RoutineCalendar.orderedWeekdays.filter { repeatRule.weekdays.contains($0) },
+            startDate: startDay,
+            endDate: endDay
+        )
+        return RoutineRevision(items: kept + seriesItems, routine: routine)
     }
 
     /// 仮配置を、タイトルを付けて予定として確定する。タイトルが空の場合は nil。
@@ -229,7 +420,7 @@ nonisolated struct TimelineItemEditUseCase: Sendable {
             startMinutes: pending.startMinutes,
             dropDate: pending.date
         )
-        return Creation(items: items + [newItem], createdItem: newItem, placement: .timeline)
+        return Creation(items: items + [newItem], createdItem: newItem, placement: .timeline, routine: nil)
     }
 
     // MARK: - 更新
@@ -267,10 +458,39 @@ nonisolated struct TimelineItemEditUseCase: Sendable {
         }
 
         var updated = items
+        applyScheduleChange(
+            to: &updated[index],
+            startMinutes: current.startMinutes,
+            dropDate: current.dropDate,
+            durationMinutes: duration
+        )
         updated[index].title = title
-        updated[index].durationMinutes = duration
         updated[index].priority = priority
         return updated
+    }
+
+    /// 開始時刻・日付・長さが変わった予定はルーティンから外す。タイトルや優先度だけなら紐づけを残す。
+    private func applyScheduleChange(
+        to item: inout TimelineItem,
+        startMinutes: Int?,
+        dropDate: Date?,
+        durationMinutes: Int
+    ) {
+        let dayChanged: Bool
+        switch (item.dropDate, dropDate) {
+        case (nil, nil):
+            dayChanged = false
+        case let (current?, updated?):
+            dayChanged = !calendar.isDate(current, inSameDayAs: updated)
+        default:
+            dayChanged = true
+        }
+        if item.startMinutes != startMinutes || dayChanged || item.durationMinutes != durationMinutes {
+            item.routineID = nil
+        }
+        item.startMinutes = startMinutes
+        item.dropDate = dropDate
+        item.durationMinutes = durationMinutes
     }
 
     /// Stock 内の並び順を変える。配置済みの予定は Stock の後ろにまとめる。

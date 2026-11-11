@@ -45,9 +45,10 @@ final class LiveActivityRepositoryImpl: LiveActivityRepository {
         let items = timelineRepository.fetchItems()
         let rotations = await updateLocalActivity(items: items, schedulesLocalRotation: false)
         do {
-            try await scheduleClient.syncTodaySchedules(
+            try await scheduleClient.syncSchedules(
                 items: items,
-                maxVisibleSlots: settings.liveActivityPlanScope.maxVisibleSlots
+                maxVisibleSlots: settings.liveActivityPlanScope.maxVisibleSlots,
+                requestsRebuild: true
             )
             cancelLocalRotation()
             settings.isLiveActivitySyncPending = false
@@ -58,6 +59,19 @@ final class LiveActivityRepositoryImpl: LiveActivityRepository {
             }
             settings.isLiveActivitySyncPending = true
             logger.error("Cloud sync failed — local rotation fallback enabled: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func syncAllSchedules() async {
+        let items = timelineRepository.fetchItems()
+        do {
+            try await scheduleClient.syncSchedules(
+                items: items,
+                maxVisibleSlots: settings.liveActivityPlanScope.maxVisibleSlots,
+                requestsRebuild: false
+            )
+        } catch {
+            logger.error("Schedule sync failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

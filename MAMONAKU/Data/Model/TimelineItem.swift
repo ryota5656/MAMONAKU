@@ -18,6 +18,8 @@ nonisolated struct TimelineItem: Identifiable, Equatable, Codable, Sendable {
     var isAllDay: Bool
     /// 将来的なタスク個別バッファ分（現状は全体設定が優先）
     var bufferMinutes: Int?
+    /// 繰り返し登録で作った予定の、元のルーティン。時刻や日付を変えると外れる。
+    var routineID: UUID?
 
     init(
         id: UUID = UUID(),
@@ -28,7 +30,8 @@ nonisolated struct TimelineItem: Identifiable, Equatable, Codable, Sendable {
         isCompleted: Bool = false,
         priority: TaskPriority = .medium,
         isAllDay: Bool = false,
-        bufferMinutes: Int? = nil
+        bufferMinutes: Int? = nil,
+        routineID: UUID? = nil
     ) {
         self.id = id
         self.title = title
@@ -39,6 +42,7 @@ nonisolated struct TimelineItem: Identifiable, Equatable, Codable, Sendable {
         self.priority = priority
         self.isAllDay = isAllDay
         self.bufferMinutes = bufferMinutes
+        self.routineID = routineID
     }
 }
 
@@ -71,7 +75,7 @@ nonisolated extension Array where Element == TimelineItem {
     }
 }
 
-nonisolated enum TaskPriority: Int, CaseIterable, Codable, Equatable, Sendable {
+nonisolated enum TaskPriority: Int, CaseIterable, Codable, Hashable, Sendable {
     case low = 0
     case medium = 1
     case high = 2

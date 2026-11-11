@@ -21,7 +21,9 @@ nonisolated final class TimelineRepositoryImpl: TimelineRepository {
         // カレンダーからの取り込みで Realm が変わったら、ミラーも追従させる。
         calendarSync.onItemsImported = { [weak self] in
             guard let self else { return }
-            self.writeMirror(self.realmClient.fetchItems())
+            let items = self.realmClient.fetchItems()
+            self.realmClient.deleteUnlinkedRoutines(linkedIDs: Set(items.compactMap(\.routineID)))
+            self.writeMirror(items)
         }
         restoreFromMirrorIfNeeded()
         calendarSync.start()
@@ -29,6 +31,14 @@ nonisolated final class TimelineRepositoryImpl: TimelineRepository {
 
     func fetchItems() -> [TimelineItem] {
         realmClient.fetchItems()
+    }
+
+    func fetchRoutines() -> [TimelineRoutine] {
+        realmClient.fetchRoutines()
+    }
+
+    func saveRoutine(_ routine: TimelineRoutine) {
+        realmClient.saveRoutine(routine)
     }
 
     func saveItems(_ items: [TimelineItem]) {
@@ -42,6 +52,14 @@ nonisolated final class TimelineRepositoryImpl: TimelineRepository {
         if let eventIdentifier = result.eventIdentifier {
             calendarSync.deleteEventsInBackground(identifiers: [eventIdentifier])
         }
+        let items = realmClient.fetchItems()
+        realmClient.deleteUnlinkedRoutines(linkedIDs: Set(items.compactMap(\.routineID)))
+        writeMirror(items)
+    }
+
+    func deleteRoutine(id: UUID) {
+        let eventIdentifiers = realmClient.deleteRoutine(id: id)
+        calendarSync.deleteEventsInBackground(identifiers: eventIdentifiers)
         writeMirror(realmClient.fetchItems())
     }
 
@@ -58,6 +76,7 @@ nonisolated final class TimelineRepositoryImpl: TimelineRepository {
 
     private func replaceItems(with items: [TimelineItem]) {
         let removedEventIdentifiers = realmClient.replaceAll(with: items)
+        realmClient.deleteUnlinkedRoutines(linkedIDs: Set(items.compactMap(\.routineID)))
         calendarSync.deleteEvents(identifiers: removedEventIdentifiers)
         calendarSync.exportItemsToCalendar()
         writeMirror(items)

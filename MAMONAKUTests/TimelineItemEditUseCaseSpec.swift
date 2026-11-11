@@ -233,6 +233,226 @@ final class TimelineItemEditUseCaseSpec: QuickSpec {
             }
         }
 
+        describe("createRoutine") {
+            let thursday = TestTime.calendar.component(.weekday, from: today)
+            let friday = TestTime.calendar.component(.weekday, from: TestTime.tomorrow)
+
+            it("選んだ曜日の開始日から終了日まで、同じ時刻で作る") {
+                let creation = useCase.createRoutine(
+                    title: "バイト",
+                    priority: .medium,
+                    startDate: TestTime.date(hour: 10),
+                    endDate: TestTime.date(hour: 13),
+                    repeatRule: RoutineRepeat(weekdays: [thursday, friday], endDate: TestTime.tomorrow),
+                    in: []
+                )
+
+                expect(creation?.routine?.weekdaySet).to(equal(Set([thursday, friday])))
+                expect(creation?.items.map(\.dropDate)).to(equal([today, TestTime.tomorrow]))
+                expect(creation?.items.map(\.startMinutes)).to(equal([600, 600]))
+                expect(creation?.items.map(\.durationMinutes)).to(equal([180, 180]))
+                expect(creation?.items.map(\.routineID)).to(equal([creation?.routine?.id, creation?.routine?.id]))
+            }
+
+            it("他の予定と重なる日は飛ばす") {
+                let existing = TimelineItem.placed("会議", startMinutes: 600, durationMinutes: 60)
+
+                let creation = useCase.createRoutine(
+                    title: "バイト",
+                    priority: .low,
+                    startDate: TestTime.date(hour: 10),
+                    endDate: TestTime.date(hour: 12),
+                    repeatRule: RoutineRepeat(weekdays: [thursday, friday], endDate: TestTime.tomorrow),
+                    in: [existing]
+                )
+
+                expect(creation?.items.map(\.dropDate)).to(equal([existing.dropDate, TestTime.tomorrow]))
+                expect(creation?.items.filter { $0.routineID != nil }.map(\.dropDate)).to(equal([TestTime.tomorrow]))
+            }
+
+            it("1件も置けないときは作らない") {
+                let existing = TimelineItem.placed("会議", startMinutes: 600, durationMinutes: 180)
+
+                let creation = useCase.createRoutine(
+                    title: "バイト",
+                    priority: .low,
+                    startDate: TestTime.date(hour: 10),
+                    endDate: TestTime.date(hour: 12),
+                    repeatRule: RoutineRepeat(weekdays: [thursday], endDate: today),
+                    in: [existing]
+                )
+
+                expect(creation).to(beNil())
+            }
+        }
+
+        describe("updateRoutine") {
+            let routineID = UUID()
+            let thursday = TestTime.calendar.component(.weekday, from: today)
+            let friday = TestTime.calendar.component(.weekday, from: TestTime.tomorrow)
+
+            func linked(
+                _ title: String = "バイト",
+                startMinutes: Int = 600,
+                durationMinutes: Int = 120,
+                on date: Date = TestTime.today,
+                isCompleted: Bool = false
+            ) -> TimelineItem {
+                var item = TimelineItem.placed(title, startMinutes: startMinutes, durationMinutes: durationMinutes, on: date)
+                item.routineID = routineID
+                item.isCompleted = isCompleted
+                return item
+            }
+
+            it("タイトルと時刻を、まだ紐づいている予定へ反映する") {
+                let todayItem = linked(isCompleted: true)
+                let tomorrowItem = linked(on: TestTime.tomorrow)
+
+                let revision = useCase.updateRoutine(
+                    id: routineID,
+                    title: "夕方バイト",
+                    priority: .high,
+                    startDate: TestTime.date(hour: 18),
+                    endDate: TestTime.date(hour: 21),
+                    repeatRule: RoutineRepeat(weekdays: [thursday, friday], endDate: TestTime.tomorrow),
+                    in: [todayItem, tomorrowItem]
+                )
+
+                let updated = revision?.items.filter { $0.routineID == routineID }
+                expect(updated?.map(\.id)).to(equal([todayItem.id, tomorrowItem.id]))
+                expect(updated?.map(\.title)).to(equal(["夕方バイト", "夕方バイト"]))
+                expect(updated?.map(\.startMinutes)).to(equal([18 * 60, 18 * 60]))
+                expect(updated?.map(\.durationMinutes)).to(equal([180, 180]))
+                expect(updated?.first?.isCompleted).to(beTrue())
+                expect(revision?.routine.title).to(equal("夕方バイト"))
+            }
+
+            it("曜日から外した日は削除し、すでに外れている日は残す") {
+                let todayItem = linked()
+                let tomorrowItem = linked(on: TestTime.tomorrow)
+                var detached = TimelineItem.placed("振替", startMinutes: 900, on: TestTime.tomorrow)
+                detached.routineID = nil
+
+                let revision = useCase.updateRoutine(
+                    id: routineID,
+                    title: "バイト",
+                    priority: .medium,
+                    startDate: TestTime.date(hour: 10),
+                    endDate: TestTime.date(hour: 12),
+                    repeatRule: RoutineRepeat(weekdays: [thursday], endDate: today),
+                    in: [todayItem, tomorrowItem, detached]
+                )
+
+                expect(revision?.items.map(\.id)).to(equal([detached.id, todayItem.id]))
+                expect(revision?.items.first { $0.id == todayItem.id }?.routineID).to(equal(routineID))
+            }
+
+            it("期間を延ばすと、空いている日を追加する") {
+                let todayItem = linked()
+
+                let revision = useCase.updateRoutine(
+                    id: routineID,
+                    title: "バイト",
+                    priority: .low,
+                    startDate: TestTime.date(hour: 10),
+                    endDate: TestTime.date(hour: 12),
+                    repeatRule: RoutineRepeat(weekdays: [thursday, friday], endDate: TestTime.tomorrow),
+                    in: [todayItem]
+                )
+
+                let days = revision?.items.filter { $0.routineID == routineID }.map(\.dropDate)
+                expect(days).to(equal([today, TestTime.tomorrow]))
+                expect(revision?.items.first { $0.id == todayItem.id }).notTo(beNil())
+            }
+
+            it("新しい時刻が重なる日は元の時刻のまま外し、全部重なるときは保存しない") {
+                let todayItem = linked()
+                let tomorrowItem = linked(on: TestTime.tomorrow)
+                let conflict = TimelineItem.placed("会議", startMinutes: 18 * 60, durationMinutes: 60)
+
+                let partial = useCase.updateRoutine(
+                    id: routineID,
+                    title: "バイト",
+                    priority: .low,
+                    startDate: TestTime.date(hour: 18),
+                    endDate: TestTime.date(hour: 19),
+                    repeatRule: RoutineRepeat(weekdays: [thursday, friday], endDate: TestTime.tomorrow),
+                    in: [conflict, todayItem, tomorrowItem]
+                )
+
+                expect(partial?.items.first { $0.id == todayItem.id }?.routineID).to(beNil())
+                expect(partial?.items.first { $0.id == todayItem.id }?.startMinutes).to(equal(600))
+                expect(partial?.items.first { $0.id == tomorrowItem.id }?.startMinutes).to(equal(18 * 60))
+
+                let blocked = useCase.updateRoutine(
+                    id: routineID,
+                    title: "バイト",
+                    priority: .low,
+                    startDate: TestTime.date(hour: 18),
+                    endDate: TestTime.date(hour: 19),
+                    repeatRule: RoutineRepeat(weekdays: [thursday], endDate: today),
+                    in: [conflict, todayItem]
+                )
+                expect(blocked).to(beNil())
+            }
+        }
+
+        describe("ルーティンからの切り離し") {
+            let routineID = UUID()
+
+            func linked(_ title: String = "バイト") -> TimelineItem {
+                var item = TimelineItem.placed(title, startMinutes: 600, durationMinutes: 120)
+                item.routineID = routineID
+                return item
+            }
+
+            it("同じ位置に置き直してもルーティンに残す") {
+                let item = linked()
+
+                let result = useCase.place(itemID: item.id, atMinutes: 600, on: today, in: [item])
+
+                expect(result?.first?.routineID).to(equal(routineID))
+            }
+
+            it("時刻をずらすとルーティンから外す") {
+                let item = linked()
+
+                let result = useCase.place(itemID: item.id, atMinutes: 630, on: today, in: [item])
+
+                expect(result?.first?.startMinutes).to(equal(630))
+                expect(result?.first?.routineID).to(beNil())
+            }
+
+            it("長さを変えるとルーティンから外す") {
+                let item = linked()
+
+                let result = useCase.resize(itemID: item.id, deltaMinutes: 30, fallbackDate: today, in: [item])
+
+                expect(result?.first?.durationMinutes).to(equal(150))
+                expect(result?.first?.routineID).to(beNil())
+            }
+
+            it("タイトルだけ変えてもルーティンに残す") {
+                let item = linked()
+
+                let result = useCase.update(
+                    itemID: item.id, title: "バイト（振替）", durationMinutes: 120, priority: .high, in: [item]
+                )
+
+                expect(result?.first?.title).to(equal("バイト（振替）"))
+                expect(result?.first?.routineID).to(equal(routineID))
+            }
+
+            it("Stock に戻すとルーティンから外す") {
+                let item = linked()
+
+                let result = useCase.returnToStock(itemID: item.id, in: [item])
+
+                expect(result?.first?.isInStock).to(beTrue())
+                expect(result?.first?.routineID).to(beNil())
+            }
+        }
+
         describe("rename / update") {
             it("前後の空白を除いたタイトルに変える") {
                 let item = TimelineItem.placed("会議", startMinutes: 600)

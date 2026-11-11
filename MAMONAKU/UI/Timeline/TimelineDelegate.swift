@@ -44,6 +44,7 @@ protocol TimelineDelegate: AnyObject {
     // MARK: Stock
 
     func timelineDidTapAddTask()
+    func timelineDidTapRoutines()
     func timelineDidTapStockItem(id: UUID)
     func timelineDidBeginDraggingStockItem(id: UUID)
     func timelineDidEndDraggingStockItem()

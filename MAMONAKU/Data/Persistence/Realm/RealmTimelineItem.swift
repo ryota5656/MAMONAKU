@@ -14,6 +14,7 @@ nonisolated final class RealmTimelineItem: Object {
     @Persisted var isCompleted: Bool = false
     @Persisted var priority: Int = 1
     @Persisted var isAllDay: Bool = false
+    @Persisted var routineID: String?
 
     convenience init(item: TimelineItem, sortIndex: Int, eventIdentifier: String? = nil) {
         self.init()
@@ -27,6 +28,7 @@ nonisolated final class RealmTimelineItem: Object {
         self.isCompleted = item.isCompleted
         self.priority = item.priority.rawValue
         self.isAllDay = item.isAllDay
+        self.routineID = item.routineID?.uuidString
     }
 
     func toTimelineItem() -> TimelineItem {
@@ -38,7 +40,8 @@ nonisolated final class RealmTimelineItem: Object {
             dropDate: dropDate,
             isCompleted: isCompleted,
             priority: TaskPriority(rawValue: priority) ?? .medium,
-            isAllDay: isAllDay
+            isAllDay: isAllDay,
+            routineID: routineID.flatMap(UUID.init(uuidString:))
         )
     }
 }

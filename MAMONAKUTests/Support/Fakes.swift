@@ -5,26 +5,49 @@ import Foundation
 @MainActor
 final class FakeTimelineRepository: TimelineRepository {
     var items: [TimelineItem]
+    var routines: [TimelineRoutine]
     private(set) var saveCount = 0
     private(set) var deletedIDs: [UUID] = []
+    private(set) var deletedRoutineIDs: [UUID] = []
     /// `requestCalendarAccess` の結果
     var isCalendarAccessGranted = true
     private(set) var calendarSyncEnabledHistory: [Bool] = []
 
-    init(items: [TimelineItem] = []) {
+    init(items: [TimelineItem] = [], routines: [TimelineRoutine] = []) {
         self.items = items
+        self.routines = routines
     }
 
     func fetchItems() -> [TimelineItem] { items }
 
+    func fetchRoutines() -> [TimelineRoutine] { routines }
+
+    func saveRoutine(_ routine: TimelineRoutine) {
+        routines.removeAll { $0.id == routine.id }
+        routines.append(routine)
+    }
+
     func saveItems(_ items: [TimelineItem]) {
         self.items = items
         saveCount += 1
+        pruneRoutines()
     }
 
     func deleteItem(id: UUID) {
         items.removeAll { $0.id == id }
         deletedIDs.append(id)
+        pruneRoutines()
+    }
+
+    func deleteRoutine(id: UUID) {
+        routines.removeAll { $0.id == id }
+        items.removeAll { $0.routineID == id }
+        deletedRoutineIDs.append(id)
+    }
+
+    private func pruneRoutines() {
+        let linked = Set(items.compactMap(\.routineID))
+        routines.removeAll { !linked.contains($0.id) }
     }
 
     func requestCalendarAccess() async -> Bool { isCalendarAccessGranted }
@@ -68,6 +91,7 @@ final class FakeTimelineNotificationRepository: TimelineNotificationRepository {
 final class FakeLiveActivityRepository: LiveActivityRepository {
     private(set) var isSyncPending = false
     private(set) var commitSyncCount = 0
+    private(set) var syncAllSchedulesCount = 0
     private(set) var refreshIfOverdueCount = 0
 
     func markSyncPending() {
@@ -77,6 +101,10 @@ final class FakeLiveActivityRepository: LiveActivityRepository {
     func commitSync() async {
         commitSyncCount += 1
         isSyncPending = false
+    }
+
+    func syncAllSchedules() async {
+        syncAllSchedulesCount += 1
     }
 
     func refreshIfOverdue() async {
