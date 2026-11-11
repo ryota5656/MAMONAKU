@@ -1,153 +1,74 @@
-//
-//  SettingsViewModel.swift
-//  MAMONAKU
-//
-//  設定画面の UI 状態とサブスクリプション・カレンダー同期の制御を管理する。
-//
-
 import Foundation
-import Combine
-import SwiftUI
-import EventKit
-import UserNotifications
-import UIKit
+import Observation
 
+/// 設定画面のロジック。設定値の読み書きと、それに伴う通知の再登録・カレンダー同期の切り替えを行う。
+///
+/// 加入状態と選択中テーマは Screen から `environmentDidChange` で受け取る
+/// （どちらもアプリ全体で共有する `SubscriptionManager` / `ThemeManager` が持つため）。
+@Observable
 @MainActor
-final class SettingsViewModel: ObservableObject, SettingsDelegate {
+final class SettingsViewModel: SettingsDelegate {
+    /// View 側で実行する副作用の指示。実行後に `handleRouteConsumed` を呼ぶ。
     enum Route: Equatable {
         case openURL(URL)
+        /// iOS の設定アプリで、このアプリの設定を開く
+        case openSystemSettings
+        case applyTheme(AppPalette)
+        case setDebugSubscriptionOverride(Bool)
     }
 
-    /// テーマ適用は ThemeManager を Screen 側から注入する
-    var onApplyTheme: ((AppPalette) -> Void)?
-
-    private static let calendarSyncEnabledKey = "calendar_sync_enabled"
-    private static let defaultGlobalBufferMinutes = 10
-    private static let minGlobalBufferMinutes = 1
-    private static let maxGlobalBufferMinutes = 120
-
-    /// サブスクリプションシートを表示するか
-    @Published var showSubscriptionSheet: Bool = false
-
-    /// 標準カレンダーと同期（App Group UserDefaults と同期。サブスク加入時のみ有効）
-    @Published var calendarSyncEnabled: Bool = false {
-        didSet {
-            guard effectiveIsSubscribed else { return }
-            userDefaults?.set(calendarSyncEnabled, forKey: Self.calendarSyncEnabledKey)
-            timelineRepository.setCalendarSyncEnabled(calendarSyncEnabled)
-        }
+    private enum Link {
+        static let feedback = URL(string: "mailto:kopernix5656@icloud.com")
+        static let terms = URL(string: "https://note.com/quirky_magpie934/n/n7746f82a9f27")
+        static let privacyPolicy = URL(string: "https://note.com/quirky_magpie934/n/naec276dc2d9b")
     }
 
-    /// 次タスク通知の全体バッファ分（現状は全タスク共通）
-    @Published var globalBufferMinutes: Int = 10 {
-        didSet {
-            let clamped = Self.clampBufferMinutes(globalBufferMinutes)
-            if globalBufferMinutes != clamped {
-                globalBufferMinutes = clamped
-                return
-            }
-            guard effectiveIsSubscribed else { return }
-            userDefaults?.set(clamped, forKey: AppGroup.globalBufferMinutesKey)
-            bufferNotificationScheduler.reschedule(items: timelineRepository.fetchItems())
-        }
+    /// バッファ分を増減する刻み
+    private static let bufferStepMinutes = 5
+
+    // MARK: - State
+
+    private(set) var state = SettingsViewState()
+    private(set) var route: Route?
+
+    // MARK: - Dependencies
+
+    @ObservationIgnored private let settings: AppSettingsClient
+    @ObservationIgnored private let timelineRepository: TimelineRepository
+    @ObservationIgnored private let notificationRepository: TimelineNotificationRepository
+
+    init(
+        settings: AppSettingsClient,
+        timelineRepository: TimelineRepository,
+        notificationRepository: TimelineNotificationRepository
+    ) {
+        self.settings = settings
+        self.timelineRepository = timelineRepository
+        self.notificationRepository = notificationRepository
+        state.isSubscribed = settings.isSubscribed
+        reloadSettings()
     }
 
-    /// バッファ通知のオン/オフ（加入時のみ保存）
-    @Published var bufferNotificationEnabled: Bool = false {
-        didSet {
-            guard effectiveIsSubscribed else { return }
-            userDefaults?.set(bufferNotificationEnabled, forKey: AppGroup.bufferNotificationEnabledKey)
-            bufferNotificationScheduler.reschedule(items: timelineRepository.fetchItems())
-        }
+    // MARK: - Screen からの通知
+
+    func onAppear() async {
+        reloadSettings()
+        await refreshNotificationPermission()
     }
 
-    /// 開始時刻通知のオン/オフ
-    @Published var startNotificationEnabled: Bool = true {
-        didSet {
-            userDefaults?.set(startNotificationEnabled, forKey: AppGroup.startNotificationEnabledKey)
-            startNotificationScheduler.reschedule(items: timelineRepository.fetchItems())
-        }
+    /// 加入状態・選択中テーマが変わった（画面表示時にも呼ぶ）。
+    func environmentDidChange(
+        isSubscribed: Bool,
+        selectedTheme: AppPalette,
+        isDebugSubscriptionOverridden: Bool
+    ) {
+        state.isSubscribed = isSubscribed
+        state.selectedTheme = selectedTheme
+        state.isDebugSubscriptionOverridden = isDebugSubscriptionOverridden
     }
 
-    /// Dynamic Island / Live Activity 表示のオン/オフ（無料・PLUS どちらも保存可）
-    @Published var liveActivityEnabled: Bool = true {
-        didSet {
-            userDefaults?.set(liveActivityEnabled, forKey: AppGroup.liveActivityEnabledKey)
-        }
-    }
-
-    /// Live Activity スタック表示（最大3件）。PLUS のみ保存可。デフォルト ON。
-    @Published var multipleLiveActivityEnabled: Bool = true {
-        didSet {
-            guard effectiveIsSubscribed else { return }
-            userDefaults?.set(multipleLiveActivityEnabled, forKey: AppGroup.liveActivityMultipleEnabledKey)
-        }
-    }
-
-    /// システム通知が許可されているか
-    @Published var notificationPermissionEnabled: Bool = false
-
-    /// View 側の副作用（openURL 等）をトリガするための経路
-    @Published private(set) var route: Route?
-
-    /// サブスクリプション管理（View から注入）
-    weak var subscriptionManager: SubscriptionManager? {
-        didSet {
-            guard let manager = subscriptionManager else { return }
-            subscriptionObserver = manager.objectWillChange
-                .receive(on: RunLoop.main)
-                .sink { [weak self] _ in
-                    self?.objectWillChange.send()
-                }
-            loadCalendarSyncEnabled()
-            loadGlobalBufferMinutes()
-            loadBufferNotificationEnabled()
-            loadStartNotificationEnabled()
-            loadLiveActivityEnabled()
-            loadMultipleLiveActivityEnabled()
-            objectWillChange.send()
-        }
-    }
-
-    private var userDefaults: UserDefaults? {
-        UserDefaults(suiteName: AppGroup.id)
-    }
-
-    private var subscriptionObserver: AnyCancellable?
-    private let eventStore = EKEventStore()
-    private let timelineRepository: TimelineRepositoryProtocol
-    private let startNotificationScheduler = TimelineStartNotificationScheduler()
-    private let bufferNotificationScheduler = TimelineBufferNotificationScheduler()
-
-    init(timelineRepository: TimelineRepositoryProtocol? = nil) {
-        self.timelineRepository = timelineRepository ?? TimelineRepository()
-        loadCalendarSyncEnabled()
-        loadGlobalBufferMinutes()
-        loadBufferNotificationEnabled()
-        loadStartNotificationEnabled()
-        loadLiveActivityEnabled()
-        loadMultipleLiveActivityEnabled()
-        refreshNotificationPermissionStatus()
-    }
-
-    var state: SettingsViewState {
-        SettingsViewState(
-            showSubscriptionSheet: showSubscriptionSheet,
-            subscriptionStatusText: subscriptionStatusText,
-            effectiveIsSubscribed: effectiveIsSubscribed,
-            isCalendarSyncToggleEnabled: isCalendarSyncToggleEnabled,
-            calendarSyncEnabled: calendarSyncEnabled,
-            isThemeSettingEnabled: isThemeSettingEnabled,
-            availableThemes: availableThemes,
-            notificationPermissionEnabled: notificationPermissionEnabled,
-            startNotificationEnabled: startNotificationEnabled,
-            liveActivityEnabled: liveActivityEnabled,
-            multipleLiveActivityEnabled: multipleLiveActivityEnabled,
-            bufferNotificationEnabled: bufferNotificationEnabled,
-            globalBufferMinutes: globalBufferMinutes,
-            isBufferSettingEnabled: isBufferSettingEnabled,
-            isBufferMinutesVisible: isBufferSettingEnabled && bufferNotificationEnabled
-        )
+    func dismissSubscriptionSheet() {
+        state.isSubscriptionSheetPresented = false
     }
 
     func handleRouteConsumed() {
@@ -156,356 +77,137 @@ final class SettingsViewModel: ObservableObject, SettingsDelegate {
 
     // MARK: - SettingsDelegate
 
-    func settingsDidAppear(subscriptionManager: SubscriptionManager) {
-        self.subscriptionManager = subscriptionManager
-        refreshNotificationPermissionStatus()
+    func settingsDidTapSubscription() {
+        state.isSubscriptionSheetPresented = true
     }
 
-    func settingsOpenSubscriptionSheet() {
-        openSubscriptionSheet()
+    func settingsDidTapLockedFeature() {
+        state.isSubscriptionSheetPresented = true
     }
 
-    func settingsSelectTheme(_ theme: AppPalette) {
-        selectTheme(theme, apply: onApplyTheme ?? { _ in })
-    }
-
-    func settingsCanSelectTheme(_ theme: AppPalette) -> Bool {
-        canSelectTheme(theme)
-    }
-
-    func settingsIncrementBufferMinutes() {
-        incrementBufferMinutes()
-    }
-
-    func settingsDecrementBufferMinutes() {
-        decrementBufferMinutes()
-    }
-
-    func settingsOpenMailFeedback() {
-        openMailFeedback()
-    }
-
-    func settingsOpenTerms() {
-        openTerms()
-    }
-
-    func settingsOpenPrivacyPolicy() {
-        openPrivacyPolicy()
-    }
-
-    private func loadCalendarSyncEnabled() {
-        let value = userDefaults?.object(forKey: Self.calendarSyncEnabledKey) as? Bool ?? false
-        if calendarSyncEnabled != value {
-            calendarSyncEnabled = value
-        }
-    }
-
-    private func loadGlobalBufferMinutes() {
-        let raw = userDefaults?.object(forKey: AppGroup.globalBufferMinutesKey) as? Int
-            ?? Self.defaultGlobalBufferMinutes
-        let value = Self.clampBufferMinutes(raw)
-        if globalBufferMinutes != value {
-            globalBufferMinutes = value
-        }
-    }
-
-    private func loadBufferNotificationEnabled() {
-        let value = userDefaults?.object(forKey: AppGroup.bufferNotificationEnabledKey) as? Bool ?? false
-        if bufferNotificationEnabled != value {
-            bufferNotificationEnabled = value
-        }
-    }
-
-    private func loadStartNotificationEnabled() {
-        let value = userDefaults?.object(forKey: AppGroup.startNotificationEnabledKey) as? Bool ?? true
-        if startNotificationEnabled != value {
-            startNotificationEnabled = value
-        }
-    }
-
-    private func loadLiveActivityEnabled() {
-        let value = userDefaults?.object(forKey: AppGroup.liveActivityEnabledKey) as? Bool ?? true
-        if liveActivityEnabled != value {
-            liveActivityEnabled = value
-        }
-    }
-
-    private func loadMultipleLiveActivityEnabled() {
-        let value = userDefaults?.object(forKey: AppGroup.liveActivityMultipleEnabledKey) as? Bool ?? true
-        if multipleLiveActivityEnabled != value {
-            multipleLiveActivityEnabled = value
-        }
-    }
-
-    private static func clampBufferMinutes(_ value: Int) -> Int {
-        min(max(value, minGlobalBufferMinutes), maxGlobalBufferMinutes)
-    }
-
-    func refreshNotificationPermissionStatus() {
-        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
-            let enabled: Bool
-            switch settings.authorizationStatus {
-            case .authorized, .provisional, .ephemeral:
-                enabled = true
-            default:
-                enabled = false
-            }
-            DispatchQueue.main.async {
-                self?.notificationPermissionEnabled = enabled
-            }
-        }
-    }
-
-    /// サブスクリプション加入状態（StoreKit + DEBUG オーバーライド）
-    var effectiveIsSubscribed: Bool {
-        if let manager = subscriptionManager {
-            return manager.effectiveIsSubscribed
-        }
-        return userDefaults?.bool(forKey: SubscriptionManager.subscriptionStateUserDefaultsKey) ?? false
-    }
-
-    /// サブスクリプション加入状態の表示文言
-    var subscriptionStatusText: String {
-        effectiveIsSubscribed ? "加入中" : "未登録"
-    }
-
-    /// カレンダー同期トグルを有効にするか（加入時のみ true）
-    var isCalendarSyncToggleEnabled: Bool {
-        effectiveIsSubscribed
-    }
-
-    /// バッファ通知設定を有効にするか（加入時のみ true）
-    var isBufferSettingEnabled: Bool {
-        effectiveIsSubscribed
-    }
-
-    /// テーマ設定は常時有効（無料テーマは未加入でも選択可能）
-    var isThemeSettingEnabled: Bool {
-        true
-    }
-
-    /// 現在選択可能なテーマ一覧（未加入時は無料テーマのみ）
-    var availableThemes: [AppPalette] {
-        AppPalette.visibleInSettings
-    }
-
-    /// 現在の加入状態で選択可能なテーマか
-    func canSelectTheme(_ theme: AppPalette) -> Bool {
-        effectiveIsSubscribed || theme.isFreeTheme
-    }
-
-    /// Dynamic Island / Live Activity 設定を有効にするか
-    var isLiveActivitySettingEnabled: Bool {
-        true
-    }
-
-    /// カレンダー同期の Binding（未加入時はオフ表示・変更不可）
-    var calendarSyncEnabledBinding: Binding<Bool> {
-        Binding(
-            get: { [self] in
-                if effectiveIsSubscribed { return self.calendarSyncEnabled }
-                return false
-            },
-            set: { [self] newValue in
-                guard effectiveIsSubscribed else { return }
-                if !newValue {
-                    self.calendarSyncEnabled = false
-                    return
-                }
-                requestCalendarAccessThenEnableIfGranted()
-            }
-        )
-    }
-
-    private func requestCalendarAccessThenEnableIfGranted() {
-        let status = EKEventStore.authorizationStatus(for: .event)
-        if status == .authorized || isFullAccess(status) {
-            calendarSyncEnabled = true
-            return
-        }
-
-        switch status {
-        case .notDetermined:
-            if #available(iOS 17.0, *) {
-                eventStore.requestFullAccessToEvents { [weak self] granted, _ in
-                    DispatchQueue.main.async {
-                        self?.calendarSyncEnabled = granted
-                    }
-                }
-            } else {
-                eventStore.requestAccess(to: .event) { [weak self] granted, _ in
-                    DispatchQueue.main.async {
-                        self?.calendarSyncEnabled = granted
-                    }
-                }
-            }
-        default:
-            calendarSyncEnabled = false
-        }
-    }
-
-    private func isFullAccess(_ status: EKAuthorizationStatus) -> Bool {
-        if #available(iOS 17.0, *) {
-            return status == .fullAccess
-        }
-        return false
-    }
-
-    /// 全体バッファ分の Binding（未加入時は変更不可）
-    var globalBufferMinutesBinding: Binding<Int> {
-        Binding(
-            get: { [self] in self.globalBufferMinutes },
-            set: { [self] newValue in
-                guard effectiveIsSubscribed else { return }
-                self.globalBufferMinutes = Self.clampBufferMinutes(newValue)
-            }
-        )
-    }
-
-    /// バッファ通知オン/オフの Binding（未加入時は変更不可）
-    var bufferNotificationEnabledBinding: Binding<Bool> {
-        Binding(
-            get: { [self] in
-                if effectiveIsSubscribed { return self.bufferNotificationEnabled }
-                return false
-            },
-            set: { [self] newValue in
-                guard effectiveIsSubscribed else { return }
-                self.bufferNotificationEnabled = newValue
-            }
-        )
-    }
-
-    /// 開始通知オン/オフの Binding
-    var startNotificationEnabledBinding: Binding<Bool> {
-        Binding(
-            get: { [self] in self.startNotificationEnabled },
-            set: { [self] newValue in
-                self.startNotificationEnabled = newValue
-            }
-        )
-    }
-
-    /// Dynamic Island / Live Activity の Binding
-    var liveActivityEnabledBinding: Binding<Bool> {
-        Binding(
-            get: { [self] in
-                self.liveActivityEnabled
-            },
-            set: { [self] newValue in
-                self.liveActivityEnabled = newValue
-            }
-        )
-    }
-
-    /// Live Activity 複数表示の Binding（未加入時は変更不可）
-    var multipleLiveActivityEnabledBinding: Binding<Bool> {
-        Binding(
-            get: { [self] in
-                if effectiveIsSubscribed { return self.multipleLiveActivityEnabled }
-                return false
-            },
-            set: { [self] newValue in
-                guard effectiveIsSubscribed else { return }
-                self.multipleLiveActivityEnabled = newValue
-            }
-        )
-    }
-
-    /// システム通知許可の Binding（ONで許可リクエスト、OFFは設定画面へ誘導）
-    var notificationPermissionBinding: Binding<Bool> {
-        Binding(
-            get: { [self] in self.notificationPermissionEnabled },
-            set: { [self] newValue in
-                if newValue {
-                    requestNotificationPermission()
-                } else {
-                    openAppSettings()
-                    refreshNotificationPermissionStatus()
-                }
-            }
-        )
-    }
-
-    private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] _, _ in
-            self?.refreshNotificationPermissionStatus()
-        }
-    }
-
-    private func openAppSettings() {
-        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-        DispatchQueue.main.async {
-            if UIApplication.shared.canOpenURL(url) {
-                UIApplication.shared.open(url)
-            }
-        }
-    }
-
-    /// バッファ分を +5（1分のときだけ + で 5分に補正）
-    func incrementBufferMinutes() {
-        guard effectiveIsSubscribed else { return }
-        if globalBufferMinutes < 5 {
-            globalBufferMinutes = 5
-            return
-        }
-        globalBufferMinutes = Self.clampBufferMinutes(globalBufferMinutes + 5)
-    }
-
-    /// バッファ分を -5（5分以下は 1分に補正）
-    func decrementBufferMinutes() {
-        guard effectiveIsSubscribed else { return }
-        if globalBufferMinutes <= 5 {
-            globalBufferMinutes = 1
-            return
-        }
-        globalBufferMinutes = Self.clampBufferMinutes(globalBufferMinutes - 5)
-    }
-
-    /// サブスクリプションシートを開く
-    func openSubscriptionSheet() {
-        showSubscriptionSheet = true
-    }
-
-    func openMailFeedback() {
-        guard let url = URL(string: "mailto:kopernix5656@icloud.com") else { return }
-        route = .openURL(url)
-    }
-
-    func openTerms() {
-        guard let url = URL(string: "https://note.com/quirky_magpie934/n/n7746f82a9f27") else { return }
-        route = .openURL(url)
-    }
-
-    func openPrivacyPolicy() {
-        guard let url = URL(string: "https://note.com/quirky_magpie934/n/naec276dc2d9b") else { return }
-        route = .openURL(url)
-    }
-
-    func selectTheme(_ theme: AppPalette, apply: (AppPalette) -> Void) {
-        if canSelectTheme(theme) {
-            apply(theme)
+    func settingsDidSelectTheme(_ theme: AppPalette) {
+        if state.canSelectTheme(theme) {
+            route = .applyTheme(theme)
         } else {
-            openSubscriptionSheet()
+            state.isSubscriptionSheetPresented = true
         }
     }
 
-    /// サブスクリプションシートを閉じる
-    func dismissSubscriptionSheet() {
-        showSubscriptionSheet = false
+    func settingsDidToggleCalendarSync(_ isOn: Bool) {
+        guard state.isSubscribed else { return }
+        guard isOn else {
+            setCalendarSyncEnabled(false)
+            return
+        }
+        // オンにできるのは、標準カレンダーへのアクセスが許可された場合だけ。
+        Task {
+            setCalendarSyncEnabled(await timelineRepository.requestCalendarAccess())
+        }
     }
 
-    #if DEBUG
-    /// 開発用: サブスク登録オーバーライドの Binding。トグルで加入/未加入を切り替えると effectiveIsSubscribed が変わり、優先度・カレンダー同期など全 UI に反映される。
-    var debugOverrideSubscribedBinding: Binding<Bool> {
-        Binding(
-            get: { [weak self] in
-                self?.subscriptionManager?.debugOverrideSubscribed ?? false
-            },
-            set: { [weak self] newValue in
-                self?.subscriptionManager?.debugOverrideSubscribed = newValue
+    func settingsDidToggleNotificationPermission(_ isOn: Bool) {
+        if isOn {
+            Task {
+                await notificationRepository.requestAuthorizationIfNeeded()
+                await refreshNotificationPermission()
             }
+        } else {
+            // アプリからは許可を取り消せないため、設定アプリへ案内する。
+            route = .openSystemSettings
+            Task { await refreshNotificationPermission() }
+        }
+    }
+
+    func settingsDidToggleStartNotification(_ isOn: Bool) {
+        state.isStartNotificationEnabled = isOn
+        settings.isStartNotificationEnabled = isOn
+        notificationRepository.rescheduleStartNotifications(items: timelineRepository.fetchItems())
+    }
+
+    func settingsDidToggleLiveActivity(_ isOn: Bool) {
+        state.isLiveActivityEnabled = isOn
+        settings.isLiveActivityEnabled = isOn
+    }
+
+    func settingsDidToggleLiveActivityStack(_ isOn: Bool) {
+        guard state.isSubscribed else { return }
+        state.isLiveActivityStackEnabled = isOn
+        settings.isLiveActivityStackPreferred = isOn
+    }
+
+    func settingsDidToggleBufferNotification(_ isOn: Bool) {
+        guard state.isSubscribed else { return }
+        state.isBufferNotificationEnabled = isOn
+        settings.isBufferNotificationPreferred = isOn
+        rescheduleBufferNotifications()
+    }
+
+    /// バッファ分を +5 する。5 分未満（1 分）からは 5 分にする。
+    func settingsDidIncrementBufferMinutes() {
+        let step = Self.bufferStepMinutes
+        setBufferMinutes(state.bufferMinutes < step ? step : state.bufferMinutes + step)
+    }
+
+    /// バッファ分を -5 する。5 分以下からは最短の 1 分にする。
+    func settingsDidDecrementBufferMinutes() {
+        let step = Self.bufferStepMinutes
+        setBufferMinutes(
+            state.bufferMinutes <= step
+                ? AppSettingsClient.bufferMinutesRange.lowerBound
+                : state.bufferMinutes - step
         )
     }
-    #endif
+
+    func settingsDidTapFeedback() {
+        open(Link.feedback)
+    }
+
+    func settingsDidTapTerms() {
+        open(Link.terms)
+    }
+
+    func settingsDidTapPrivacyPolicy() {
+        open(Link.privacyPolicy)
+    }
+
+    func settingsDidToggleDebugSubscription(_ isOn: Bool) {
+        route = .setDebugSubscriptionOverride(isOn)
+    }
+
+    // MARK: - Private
+
+    private func reloadSettings() {
+        state.isCalendarSyncEnabled = settings.isCalendarSyncPreferred
+        state.isStartNotificationEnabled = settings.isStartNotificationEnabled
+        state.isLiveActivityEnabled = settings.isLiveActivityEnabled
+        state.isLiveActivityStackEnabled = settings.isLiveActivityStackPreferred
+        state.isBufferNotificationEnabled = settings.isBufferNotificationPreferred
+        state.bufferMinutes = settings.globalBufferMinutes
+    }
+
+    private func refreshNotificationPermission() async {
+        state.isNotificationPermissionGranted = await notificationRepository.isAuthorized()
+    }
+
+    private func setCalendarSyncEnabled(_ isEnabled: Bool) {
+        state.isCalendarSyncEnabled = isEnabled
+        timelineRepository.setCalendarSyncEnabled(isEnabled)
+    }
+
+    private func setBufferMinutes(_ minutes: Int) {
+        guard state.isSubscribed else { return }
+        let clamped = AppSettingsClient.clampBufferMinutes(minutes)
+        state.bufferMinutes = clamped
+        settings.globalBufferMinutes = clamped
+        rescheduleBufferNotifications()
+    }
+
+    private func rescheduleBufferNotifications() {
+        notificationRepository.rescheduleBufferNotifications(items: timelineRepository.fetchItems())
+    }
+
+    private func open(_ url: URL?) {
+        guard let url else { return }
+        route = .openURL(url)
+    }
 }

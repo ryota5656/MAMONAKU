@@ -1,19 +1,19 @@
 import SwiftUI
 
+/// 次の予定の開始時刻とタイトルを示すカード。次の予定が無ければ何も表示しない。
 struct CountdownNextInfoCard: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.appTheme) private var theme
     let next: TimelineItem?
 
     var body: some View {
         if let next {
             VStack(alignment: .leading, spacing: 6) {
-                Text(minutesToTime(next.startMinutes ?? 0))
+                Text(DayTime.clockText(minutes: next.startMinutes ?? 0))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
+                    .foregroundColor(theme.textSecondary)
                 Text(next.title)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme))
+                    .foregroundColor(theme.textSecondary)
                     .lineLimit(2)
             }
             .padding(.vertical, 10)
@@ -25,12 +25,6 @@ struct CountdownNextInfoCard: View {
             )
         }
     }
-
-    private func minutesToTime(_ minutes: Int) -> String {
-        let h = minutes / 60
-        let m = minutes % 60
-        return String(format: "%02d:%02d", h, m)
-    }
 }
 
 #Preview("CountdownNextInfoCard") {
@@ -38,12 +32,4 @@ struct CountdownNextInfoCard: View {
         next: TimelineItem(title: "Study", durationMinutes: 60, startMinutes: 9 * 60 + 30, dropDate: Date())
     )
     .padding()
-    .environmentObject(ThemeManager())
 }
-
-#Preview("CountdownNextInfoCard - nil") {
-    CountdownNextInfoCard(next: nil)
-        .padding()
-        .environmentObject(ThemeManager())
-}
-

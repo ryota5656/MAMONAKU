@@ -102,7 +102,7 @@
 		4BAB88232F38534000B75F3D /* Exceptions for "MAMONAKU" folder in "MAMONAKULiveActivityExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				"Util/Color+Hex.swift",
+				Util/AppGroup.swift,
 			);
 			target = 4BD9F8442F1D2A640094BC8C /* MAMONAKULiveActivityExtension */;
 		};
@@ -116,7 +116,7 @@
 		4BD9F8642F1D2C290094BC8C /* Exceptions for "MAMONAKULiveActivity" folder in "MAMONAKU" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				MAMONAKULiveActivityLiveActivity.swift,
+				MAMONAKULiveActivityAttributes.swift,
 			);
 			target = 4BD9F7CC2F1D16EC0094BC8C /* MAMONAKU */;
 		};

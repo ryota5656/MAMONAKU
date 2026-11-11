@@ -1,29 +1,25 @@
 import SwiftUI
 
+/// 日付ストリップの 1 日分（日と曜日）。
 struct CalendarWeekDayCell: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.appTheme) private var theme
     let date: Date
     let isSelected: Bool
     let isToday: Bool
     let onTap: () -> Void
 
     var body: some View {
-        let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
-        let strongAccent = AppColors.strongAccent(palette: themeManager.theme, environmentScheme: colorScheme)
-        let cal = Calendar.current
-        let dayColor: Color = isToday ? strongAccent : (isSelected ? .primary : secondary)
-        let weekdayColor: Color = isToday ? strongAccent : (isSelected ? .primary : secondary)
+        let textColor: Color = isToday ? theme.strongAccent : (isSelected ? .primary : theme.textSecondary)
 
         Button(action: onTap) {
             VStack(spacing: 4) {
-                Text("\(cal.component(.day, from: date))")
+                Text("\(Calendar.current.component(.day, from: date))")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(dayColor)
+                    .foregroundColor(textColor)
                     .frame(width: 24)
                 Text(CalendarHeaderDateFormatting.shortWeekdaySymbol(for: date))
                     .font(.system(size: 6, weight: .semibold))
-                    .foregroundColor(weekdayColor)
+                    .foregroundColor(textColor)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
@@ -45,7 +41,6 @@ struct CalendarWeekDayCell: View {
     )
     .padding()
     .background(Color(.systemBackground))
-    .environmentObject(ThemeManager())
 }
 
 #Preview("WeekDayCell - Selected") {
@@ -58,7 +53,6 @@ struct CalendarWeekDayCell: View {
     )
     .padding()
     .background(Color(.systemBackground))
-    .environmentObject(ThemeManager())
 }
 
 #Preview("WeekDayCell - Normal") {
@@ -71,5 +65,4 @@ struct CalendarWeekDayCell: View {
     )
     .padding()
     .background(Color(.systemBackground))
-    .environmentObject(ThemeManager())
 }

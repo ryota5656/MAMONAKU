@@ -1,21 +1,19 @@
 import SwiftUI
 
+/// タイムライン左端の時刻ラベル列（00:00〜24:00）。
 struct TimelineTimeColumnView: View {
-    let timeColumnWidth: CGFloat
-    let hourHeight: CGFloat
-    let zoomScale: CGFloat
-    let textColor: Color
+    @Environment(\.appTheme) private var theme
+    let layout: TimelineLayout
 
     var body: some View {
-        let rowHeight = hourHeight * zoomScale
         VStack(spacing: 0) {
             ForEach(0...24, id: \.self) { hour in
                 Text(String(format: "%02d:00", hour))
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(textColor)
+                    .foregroundColor(theme.textSecondary)
                     .frame(
-                        width: timeColumnWidth,
-                        height: rowHeight,
+                        width: TimelineLayout.timeColumnWidth,
+                        height: layout.hourHeight,
                         alignment: .topLeading
                     )
             }
@@ -24,12 +22,8 @@ struct TimelineTimeColumnView: View {
 }
 
 #Preview("TimelineTimeColumnView") {
-    TimelineTimeColumnView(
-        timeColumnWidth: 52,
-        hourHeight: 80,
-        zoomScale: 1.0,
-        textColor: .secondary
-    )
-    .padding()
+    ScrollView {
+        TimelineTimeColumnView(layout: TimelineLayout())
+            .padding()
+    }
 }
-

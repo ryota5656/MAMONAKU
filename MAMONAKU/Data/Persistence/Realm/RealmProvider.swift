@@ -1,43 +1,28 @@
-//
-//  RealmProvider.swift
-//  MAMONAKU
-//
-
 import Foundation
 import RealmSwift
+import os
 
-final class RealmProvider {
-    static let defaultAppGroupID = "group.sairyo.MAMONAKU"
+/// Realm の構成（保存先・スキーマバージョン）を持ち、Realm を開く。
+nonisolated final class RealmProvider {
     static let schemaVersion: UInt64 = 5
 
     let configuration: Realm.Configuration
 
-    init(appGroupID: String = defaultAppGroupID) {
-        let realmURL = Self.realmFileURL(appGroupID: appGroupID)
-        if let realmURL {
-            print("Realm file URL: \(realmURL)")
-        } else {
-            print("Realm file URL: nil (using default Realm configuration)")
-        }
-
-        configuration = Realm.Configuration(
-            fileURL: realmURL,
+    /// - Parameter appGroupID: Realm ファイルを置く App Group。コンテナが取得できない場合は Realm 既定の場所を使う。
+    init(appGroupID: String = AppGroup.id) {
+        // スキーマ 2〜5 はプロパティ追加のみ（eventIdentifier 等 / isCompleted / priority / isAllDay）で、
+        // Realm の自動マイグレーションが既定値を補うため、マイグレーション処理は空でよい。
+        var configuration = Realm.Configuration(
             schemaVersion: Self.schemaVersion,
-            migrationBlock: { _, oldSchemaVersion in
-                if oldSchemaVersion < 2 {
-                    // Automatic migration is sufficient for added properties.
-                }
-                if oldSchemaVersion < 3 {
-                    // isCompleted added; default false is applied by Realm.
-                }
-                if oldSchemaVersion < 4 {
-                    // priority added; default 1 (medium) is applied by Realm.
-                }
-                if oldSchemaVersion < 5 {
-                    // isAllDay added; default false is applied by Realm.
-                }
-            }
+            migrationBlock: { _, _ in }
         )
+        // fileURL に nil を入れると Realm が開けずクラッシュするため、取得できたときだけ上書きする。
+        if let realmURL = Self.realmFileURL(appGroupID: appGroupID) {
+            configuration.fileURL = realmURL
+        } else {
+            AppLog.storage.error("App Group container is unavailable; using the default Realm location")
+        }
+        self.configuration = configuration
     }
 
     func makeRealm() -> Realm {
@@ -45,9 +30,8 @@ final class RealmProvider {
     }
 
     private static func realmFileURL(appGroupID: String) -> URL? {
-        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
-            return nil
-        }
-        return containerURL.appendingPathComponent("MAMONAKU.realm")
+        FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
+            .appendingPathComponent("MAMONAKU.realm")
     }
 }

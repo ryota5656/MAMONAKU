@@ -2,7 +2,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
-/// UIKit の UIDropInteraction でドロップを受け取る（SwiftUI の onDrop が効かない場合のフォールバック）
+/// 予定のドロップを受け取る領域。
+/// SwiftUI の onDrop が効かない場所（オーバーレイなど）でも受け取れるよう、UIKit の UIDropInteraction を使う。
 struct ItemDropTarget: UIViewRepresentable {
     let onDrop: (UUID) -> Void
     var onDragEntered: (() -> Void)? = nil
@@ -75,22 +76,13 @@ struct ItemDropTarget: UIViewRepresentable {
 
             if provider.canLoadObject(ofClass: NSString.self) {
                 provider.loadObject(ofClass: NSString.self) { object, _ in
-                    let id = (object as? String).flatMap { UUID(uuidString: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                    complete(with: id)
+                    complete(with: ItemDragPayload.itemID(from: object as? String))
                 }
                 return
             }
 
             provider.loadItem(forTypeIdentifier: UTType.text.identifier, options: nil) { item, _ in
-                let id: UUID? = {
-                    if let data = item as? Data, let text = String(data: data, encoding: .utf8) {
-                        return UUID(uuidString: text.trimmingCharacters(in: .whitespacesAndNewlines))
-                    }
-                    if let text = item as? String { return UUID(uuidString: text.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                    if let text = item as? NSString { return UUID(uuidString: text.trimmingCharacters(in: .whitespacesAndNewlines) as String) }
-                    return nil
-                }()
-                complete(with: id)
+                complete(with: ItemDragPayload.itemID(from: item))
             }
         }
 

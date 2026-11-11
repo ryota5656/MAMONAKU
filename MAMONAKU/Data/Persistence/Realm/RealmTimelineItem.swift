@@ -1,12 +1,9 @@
-//
-//  RealmTimelineItem.swift
-//  MAMONAKU
-//
-
 import Foundation
+import Realm
 import RealmSwift
 
-final class RealmTimelineItem: Object {
+/// 予定の Realm 保存形式。`sortIndex` が並び順、`eventIdentifier` が標準カレンダーのイベントとの対応を表す。
+nonisolated final class RealmTimelineItem: Object {
     @Persisted(primaryKey: true) var id: String
     @Persisted var title: String = ""
     @Persisted var durationMinutes: Int = 0

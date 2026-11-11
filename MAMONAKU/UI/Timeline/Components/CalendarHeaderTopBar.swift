@@ -1,25 +1,21 @@
 import SwiftUI
 
+/// カレンダーヘッダーの上段。左に曜日、右に日付（タップで日付選択を開く）。
 struct CalendarHeaderTopBar: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.appTheme) private var theme
     let selectedDate: Date
-    var isSettingsHighlighted: Bool = false
-    var onOpenSettings: () -> Void = {}
-    var onOpenMonthCalendar: () -> Void = {}
+    let onTapDate: () -> Void
 
     var body: some View {
-        let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
-
         HStack {
             CalendarHeaderWeekdayLabel(date: selectedDate)
-            
+
             Spacer()
-            
-            Button(action: onOpenMonthCalendar) {
+
+            Button(action: onTapDate) {
                 Text(CalendarHeaderDateFormatting.dateText(for: selectedDate))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(secondary)
+                    .foregroundColor(theme.textSecondary)
                     .multilineTextAlignment(.trailing)
             }
             .buttonStyle(.plain)
@@ -30,19 +26,6 @@ struct CalendarHeaderTopBar: View {
 }
 
 #Preview("TopBar") {
-    CalendarHeaderTopBar(
-        selectedDate: Date(),
-        isSettingsHighlighted: false
-    )
-    .background(Color(.systemBackground))
-    .environmentObject(ThemeManager())
-}
-
-#Preview("TopBar - Settings Highlighted") {
-    CalendarHeaderTopBar(
-        selectedDate: Date(),
-        isSettingsHighlighted: true
-    )
-    .background(Color(.systemBackground))
-    .environmentObject(ThemeManager())
+    CalendarHeaderTopBar(selectedDate: Date(), onTapDate: {})
+        .background(Color(.systemBackground))
 }

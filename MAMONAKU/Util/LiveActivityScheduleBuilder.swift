@@ -3,9 +3,9 @@ import Foundation
 /// 今日の予定から Live Activity 用スロットとローテーション予約を組み立てる。
 /// - free: 表示は常に最大1件。1件開始後は次の1件へローテーション（後続の同時スタック表示はしない）
 /// - plus: 表示は最大3件スタック
-enum LiveActivityScheduleBuilder {
+nonisolated enum LiveActivityScheduleBuilder {
     /// 無料: 1件ずつ表示（同時スタックなし）。PLUS: 最大3件スタック表示。
-    enum PlanScope {
+    nonisolated enum PlanScope: Sendable {
         case free
         case plus
 
@@ -17,36 +17,35 @@ enum LiveActivityScheduleBuilder {
         }
     }
 
-    struct ScheduledEntry {
+    nonisolated struct ScheduledEntry: Sendable {
         let item: TimelineItem
         let startDate: Date
         let endDate: Date
     }
 
-    struct Rotation {
+    nonisolated struct Rotation: Sendable {
         let switchAt: Date
         let schedule: [ActivityTaskItem]
         let shouldEndActivity: Bool
         let reason: String
     }
 
+    /// `referenceDate` の日に配置された予定（終日を除く）を開始時刻順に返す。
+    ///
+    /// プランに依らず当日の全予定を返す。無料プランも「次の 1 件」へローテーションするため、
+    /// 同時表示件数の制限は `currentWindow` / `buildRotations` 側で行う。
     static func entriesForToday(
         items: [TimelineItem],
         referenceDate: Date = Date(),
-        planScope: PlanScope = .plus
+        calendar: Calendar = .current
     ) -> [ScheduledEntry] {
-        let calendar = Calendar.current
-        // プランに依らず当日の全配置予定を返す。
-        // 無料も「次の1件」へローテーションするためエントリは全日分を保持し、
-        // 同時表示件数の制限だけ currentWindow / maxVisibleSlots で行う。
-        _ = planScope
-        return items
+        items
             .filter { item in
                 guard !item.isAllDay,
                       let dropDate = item.dropDate,
                       item.startMinutes != nil
                 else { return false }
-                return calendar.isDateInToday(dropDate)
+                return calendar.isDate(dropDate, inSameDayAs: referenceDate)
             }
             .sorted { ($0.startMinutes ?? 0) < ($1.startMinutes ?? 0) }
             .compactMap { item -> ScheduledEntry? in

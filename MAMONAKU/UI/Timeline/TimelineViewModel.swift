@@ -1,1129 +1,500 @@
 import Foundation
-import SwiftUI
-import Combine
-import ActivityKit
-import UserNotifications
+import Observation
 
+/// タイムライン画面のロジック。
+///
+/// 予定の編集ルールは `TimelineItemEditUseCase`、保存は `TimelineRepository`、
+/// 通知と Live Activity はそれぞれのリポジトリに任せ、ここでは画面の状態遷移だけを扱う。
+@Observable
 @MainActor
-final class TimelineViewModel: ObservableObject, TimelineDelegate {
-    private let repository: TimelineRepositoryProtocol
+final class TimelineViewModel: TimelineDelegate {
+    // MARK: - State
 
-    @Published var state = TimelineViewState()
-    
-    private let tutorialCompletedKey = "tutorial.firstRun.completed"
-    private let isRadialMenuEnabled = true
-    private var isRunningInPreview: Bool {
-        ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
-    }
-    
-    let hourHeight: CGFloat = 80
-    let timeColumnWidth: CGFloat = 52
-    let timelinePadding: CGFloat = 20
-    let minuteStep: Int = 5
+    private(set) var state: TimelineViewState
 
-    @Published var items: [TimelineItem] = []
-    @Published var dropPreview: TimelineItem?
-    @Published var previewItemID: UUID?
-    @Published var dragItemID: UUID?
-    @Published var resizePreview: TimelineItem?
-    @Published var resizingItemID: UUID?
-    @Published var chipsExpanded = false
-    @Published var editMode: EditMode = .inactive
-    @Published var selectedDate = Date()
-    @Published var isTwoDayView = false
-    @Published var zoomScale: CGFloat = 1.0
-    @Published var editingItemID: UUID?
+    // MARK: - Dependencies
 
-    // 長押しで空きに置く「仮」アイテム。ドラッグで長さ決定 → タイトル入力 → 確定 / 取り消し
-    @Published var pendingPlacement: PendingPlacement?
+    @ObservationIgnored private let repository: TimelineRepository
+    @ObservationIgnored private let notificationRepository: TimelineNotificationRepository
+    @ObservationIgnored private let liveActivityRepository: LiveActivityRepository
+    /// 初回チュートリアルの完了フラグを置く UserDefaults
+    @ObservationIgnored private let localDefaults: UserDefaults
+    @ObservationIgnored private let editUseCase: TimelineItemEditUseCase
+    @ObservationIgnored private let now: () -> Date
+    /// 「更新中」表示を最低限出し続ける時間（一瞬で消えると反映されたか分からないため）
+    @ObservationIgnored private let minimumRefreshIndicatorDuration: TimeInterval
 
-    // 編集モード解除直後の再入を防ぐ（タップ解除と長押し・ドラッグ開始の競合対策）
-    private var lastEditModeExitedAt: Date?
-    private let editModeReenterCooldown: TimeInterval = 0.6
+    // MARK: - Private state
 
-    private let minResizeDurationMinutes: Int = 15
-    private let resizeDurationStepMinutes: Int = 5
-    private var calendarSyncTimer: AnyCancellable?
-    private var liveActivityRefreshTask: Task<Void, Never>?
-    private var commitSyncObserver: NSObjectProtocol?
-    private var foregroundRefreshObserver: NSObjectProtocol?
-    private let startNotificationScheduler = TimelineStartNotificationScheduler()
-    private let bufferNotificationScheduler = TimelineBufferNotificationScheduler()
-    private let liveActivityNamePrefix = "timeline-item:"
-    private let liveActivityStackName = "timeline-stack"
-    private static let defaultGlobalBufferMinutes = 10
-    private static let minBufferMinutes = 1
-    private static let maxBufferMinutes = 120
+    /// 編集モードを抜けた時刻。直後の再入を防ぐ（「完了」タップと長押し・ドラッグ開始の競合対策）。
+    @ObservationIgnored private var lastEditModeExitedAt: Date?
+    @ObservationIgnored private var pollingTask: Task<Void, Never>?
 
+    private static let tutorialCompletedKey = "tutorial.firstRun.completed"
+    private static let editModeReenterCooldown: TimeInterval = 0.6
+
+    /// - Parameters:
+    ///   - repositoryPollingInterval: 標準カレンダーからの取り込みを画面へ反映するために、保存済みの予定を読み直す間隔。nil なら読み直さない。
     init(
-        repository: TimelineRepositoryProtocol? = nil,
-        initialItems: [TimelineItem]? = nil,
-        enablePolling: Bool = true
+        repository: TimelineRepository,
+        notificationRepository: TimelineNotificationRepository,
+        liveActivityRepository: LiveActivityRepository,
+        localDefaults: UserDefaults,
+        calendar: Calendar = .current,
+        now: @escaping () -> Date = Date.init,
+        repositoryPollingInterval: Duration? = .seconds(10),
+        minimumRefreshIndicatorDuration: TimeInterval = 1.0
     ) {
-        self.repository = repository ?? TimelineRepository()
-        if let initialItems {
-            items = initialItems
-        } else {
-            bootstrapItems()
-        }
-        if enablePolling {
-            startCalendarSyncPolling()
-        }
-        state.isLiveActivitySyncPending = LiveActivitySyncCoordinator.isPending
-        commitSyncObserver = NotificationCenter.default.addObserver(
-            forName: LiveActivitySyncCoordinator.commitNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                await self?.commitPendingLiveActivitySync()
-            }
-        }
-        foregroundRefreshObserver = NotificationCenter.default.addObserver(
-            forName: LiveActivitySyncCoordinator.foregroundRefreshNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                await self?.refreshLiveActivityIfOverdue()
-            }
+        self.repository = repository
+        self.notificationRepository = notificationRepository
+        self.liveActivityRepository = liveActivityRepository
+        self.localDefaults = localDefaults
+        self.editUseCase = TimelineItemEditUseCase(calendar: calendar)
+        self.now = now
+        self.minimumRefreshIndicatorDuration = minimumRefreshIndicatorDuration
+
+        var state = TimelineViewState(selectedDate: calendar.startOfDay(for: now()))
+        state.items = repository.fetchItems()
+        state.isLiveActivitySyncPending = liveActivityRepository.isSyncPending
+        self.state = state
+
+        notificationRepository.rescheduleAll(items: state.items)
+        if let repositoryPollingInterval {
+            startPollingRepository(every: repositoryPollingInterval)
         }
     }
 
-    deinit {
-        if let commitSyncObserver {
-            NotificationCenter.default.removeObserver(commitSyncObserver)
-        }
-        if let foregroundRefreshObserver {
-            NotificationCenter.default.removeObserver(foregroundRefreshObserver)
-        }
-    }
+    // MARK: - Screen からの通知（ライフサイクル・シート）
 
-    // MARK: - TimelineDelegate
-
-    func timelineDidAppear() {
-        state.isTaskSheetPresented = true
-        state.taskSheetDetent = TaskSheetPresentation.peek
+    func onAppear() {
         startFirstRunTutorialIfNeeded()
     }
 
-    func timelineDidOpenCreateSheet() {}
-
-    func timelineItemsDidChange(hasPlacedTutorialTaskAfterNow: () -> Bool) {
-        guard state.tutorialStep == .placeTaskAfterNow else { return }
-        guard hasPlacedTutorialTaskAfterNow() else { return }
-        state.tutorialStep = .confirmComplete
-        state.tutorialPulse = true
+    func headerHeightDidChange(_ height: CGFloat) {
+        guard state.headerHeight != height else { return }
+        state.headerHeight = height
     }
 
-    func timelineDropPreviewDidChange(previewExists: Bool) {
-        guard state.isDraggingTask, previewExists else { return }
-        state.taskSheetDetent = TaskSheetPresentation.peek
+    /// アプリが前面に戻った。Live Activity の表示が古くなっていれば直す。
+    func sceneDidBecomeActive() async {
+        await liveActivityRepository.refreshIfOverdue()
     }
 
-    func timelineToggleHeaderExpanded() {
-        state.isHeaderExpanded.toggle()
+    func dismissSheet() {
+        state.sheet = nil
     }
 
-    func timelineOpenTaskSheet() {
-        state.isTaskSheetPresented = true
-        state.taskSheetSelectedTab = .timeline
-        if sheetDetentIsCollapsed {
-            state.taskSheetDetent = TaskSheetPresentation.medium
-        }
-    }
-
-    private var sheetDetentIsCollapsed: Bool {
-        state.taskSheetDetent == TaskSheetPresentation.peek
-    }
-
-    func timelineOpenSettings() {
-        state.taskSheetDetent = TaskSheetPresentation.peek
-        state.taskSheetSelectedTab = .settings
-    }
-
-    func timelineRefreshLiveActivityManually() async {
-        guard !state.isLiveActivityRefreshing else { return }
-        // 未反映の変更がなければ通信せず終了する。
-        // チュートリアル最終ステップでは、操作体験のため同期を試みる。
-        let isTutorialCompleteStep = state.tutorialStep == .confirmComplete
-        guard isTutorialCompleteStep
-                || state.isLiveActivitySyncPending
-                || LiveActivitySyncCoordinator.isPending else { return }
-        let startedAt = Date()
-        state.isLiveActivityRefreshing = true
-        await commitPendingLiveActivitySync(force: true)
-        AnalyticsService.log(AnalyticsService.Event.liveActivityRefresh)
-        let remainingDisplayTime = 1.0 - Date().timeIntervalSince(startedAt)
-        if remainingDisplayTime > 0 {
-            try? await Task.sleep(nanoseconds: UInt64(remainingDisplayTime * 1_000_000_000))
-        }
-        state.isLiveActivityRefreshing = false
-        if isTutorialCompleteStep {
-            await finishFirstRunTutorial(skipped: false)
-        }
-    }
-
-    func timelineSkipTutorial() {
-        Task { await finishFirstRunTutorial(skipped: true) }
-    }
-
-    func timelineRadialAction(at location: CGPoint, in size: CGSize) -> TimelineRadialAction? {
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let threshold: CGFloat = 22
-        for action in TimelineRadialAction.allCases {
-            let target = CGPoint(x: center.x + action.offset.width, y: center.y + action.offset.height)
-            let dx = location.x - target.x
-            let dy = location.y - target.y
-            if sqrt(dx * dx + dy * dy) <= threshold {
-                return action
-            }
-        }
-        return nil
-    }
-
-    func timelineIsRadialMenuEnabled() -> Bool { isRadialMenuEnabled }
-
-    func timelineTriggerRadialAction(_ action: TimelineRadialAction) {
-        switch action {
-        case .settings:
-            timelineOpenSettings()
-        case .refreshLiveActivity:
-            Task { await timelineRefreshLiveActivityManually() }
-        }
-    }
-
-    private func startFirstRunTutorialIfNeeded() {
-        guard !isRunningInPreview else {
-            state.tutorialStep = nil
-            return
-        }
-        guard !UserDefaults.standard.bool(forKey: tutorialCompletedKey) else { return }
-        ensureFirstRunPresetStockItem()
-        state.tutorialStep = .placeTaskAfterNow
-        state.tutorialPulse = true
-    }
-
-    private func ensureFirstRunPresetStockItem() {
-        let hasStock = items.contains { $0.dropDate == nil }
-        guard !hasStock else { return }
-        items.append(
-            TimelineItem(
-                title: "はじめてのタスク",
-                durationMinutes: 30,
-                priority: .low
-            )
-        )
-        // Stock のみの追加では LA 更新不要なので pending にしない
-        repository.saveItems(items)
-    }
-
-    private func completeTutorial() {
-        state.tutorialStep = nil
-        state.tutorialPulse = false
-        UserDefaults.standard.set(true, forKey: tutorialCompletedKey)
-    }
-
-    /// 初回チュートリアル完了。スキップ時は通知許可を出さない。
-    private func finishFirstRunTutorial(skipped: Bool) async {
-        guard state.tutorialStep != nil else { return }
-        completeTutorial()
-        AnalyticsService.log(
-            AnalyticsService.Event.firstRunComplete,
-            parameters: [AnalyticsService.Param.skipped: skipped]
-        )
-        guard !skipped else { return }
-        await NotificationAuthorizationService.requestAuthorizationIfNeeded()
-    }
-   // ストックのタスクをドロップ位置の時刻にタイムラインへ配置する
-    func addItem(item: TimelineItem, dropY: CGFloat, on date: Date) {
-        let start = startMinutesForDrop(duration: item.durationMinutes, dropY: dropY, on: date)
-        guard !isOverlapping(start: start, duration: item.durationMinutes, excluding: item.id, on: date) else { return }
-        let updated = TimelineItem(
-            id: item.id,
-            title: item.title,
-            durationMinutes: item.durationMinutes,
-            startMinutes: start,
-            dropDate: selectedDropDate(for: date),
-            priority: item.priority
-        )
-        if let index = items.firstIndex(where: { $0.id == item.id }) {
-            items[index] = updated
-        } else {
-            items.append(updated)
-        }
-        persistItems()
-        // 配置直後に微調整できるよう編集モードへ入る
-        _ = requestEnterEditMode(for: item.id)
-    }
-
-   // タイムライン上のアイテムを別の位置・日付にドロップで移動する（onDrop 用）
-    func moveItemTo(item: TimelineItem, dropY: CGFloat, on date: Date) {
-        let start = startMinutesForDrop(duration: item.durationMinutes, dropY: dropY, on: date)
-        guard !isOverlapping(start: start, duration: item.durationMinutes, excluding: item.id, on: date) else { return }
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        items[index].startMinutes = start
-        items[index].dropDate = selectedDropDate(for: date)
-        persistItems()
-    }
-
-    private let longPressPlaceDurationMinutes: Int = 30
-    private let longPressPlaceStepMinutes: Int = 5
-
-    /// タイムラインタブ再タップ: 今日以外→今日、すでに今日→現在時刻へスクロール
-    func handleTimelineTabReselect() {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        if !cal.isDate(selectedDate, inSameDayAs: today) {
-            selectedDate = today
-            isTwoDayView = false
-        }
-        state.scrollToNowRequestID = UUID()
-    }
-
-   // 空き箇所を長押し開始: 開始時刻固定・初期30分の仮配置（タイトル入力前）
-    func startPendingPlacement(date: Date, y: CGFloat) {
-        let minutes = minutesFromOffset(y, on: date)
-        let snapped = snap(minutes: minutes, step: longPressPlaceStepMinutes)
-        let start = clampStart(start: snapped, duration: longPressPlaceDurationMinutes)
-        let duration = clampedPendingDuration(
-            start: start,
-            proposedDuration: longPressPlaceDurationMinutes,
-            on: date
-        )
-        guard duration >= longPressPlaceStepMinutes else { return }
-        guard !isOverlapping(start: start, duration: duration, excluding: nil, on: date) else { return }
-        pendingPlacement = PendingPlacement(
-            date: Calendar.current.startOfDay(for: date),
-            startMinutes: start,
-            durationMinutes: duration,
-            isAwaitingTitle: false
-        )
-    }
-
-    /// 長押しドラッグ中: 開始は固定、指の Y で長さだけ更新
-    func updatePendingPlacementDuration(date: Date, y: CGFloat) {
-        guard var pending = pendingPlacement, !pending.isAwaitingTitle else { return }
-        guard Calendar.current.isDate(pending.date, inSameDayAs: date) else { return }
-        let endMinutes = snap(minutes: minutesFromOffset(y, on: date), step: longPressPlaceStepMinutes)
-        let proposed = max(longPressPlaceStepMinutes, endMinutes - pending.startMinutes)
-        pending.durationMinutes = clampedPendingDuration(
-            start: pending.startMinutes,
-            proposedDuration: proposed,
-            on: date
-        )
-        pendingPlacement = pending
-    }
-
-    /// 長押し終了: タイトル入力へ
-    func finishPendingPlacementGesture() {
-        guard var pending = pendingPlacement, !pending.isAwaitingTitle else { return }
-        guard pending.durationMinutes >= longPressPlaceStepMinutes else {
-            cancelPendingPlacement()
-            return
-        }
-        pending.isAwaitingTitle = true
-        pendingPlacement = pending
-    }
-
-   // 仮配置を確定（タイトルを付けてアイテム追加）
-    func commitPendingPlacement(title: String) {
-        guard let pending = pendingPlacement else { return }
-        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else {
-            cancelPendingPlacement()
-            return
-        }
-        let newItem = TimelineItem(
-            title: t,
-            durationMinutes: pending.durationMinutes,
-            startMinutes: pending.startMinutes,
-            dropDate: pending.date
-        )
-        items.append(newItem)
-        persistItems()
-        pendingPlacement = nil
-        AnalyticsService.logTaskCreate(
-            placement: "timeline_long_press",
-            durationMinutes: pending.durationMinutes,
-            priority: TaskPriority.medium.displayName
-        )
-        _ = requestEnterEditMode(for: newItem.id)
-    }
-
-   // 仮配置を取り消し
-    func cancelPendingPlacement() {
-        pendingPlacement = nil
-    }
-
-    /// 重なり手前・終日境界で duration をクリップ（人工的な最大値は設けない）
-    private func clampedPendingDuration(start: Int, proposedDuration: Int, on date: Date) -> Int {
-        let dayEnd = 24 * 60
-        var duration = max(longPressPlaceStepMinutes, min(proposedDuration, dayEnd - start))
-        let nextStart = items.compactMap { item -> Int? in
-            guard let itemStart = item.startMinutes,
-                  let dropDate = item.dropDate,
-                  Calendar.current.isDate(dropDate, inSameDayAs: date),
-                  itemStart >= start
-            else { return nil }
-            // 開始位置そのものに既存タスクがある場合は 0
-            if itemStart == start { return start }
-            return itemStart
-        }.min()
-
-        if let nextStart {
-            duration = min(duration, max(0, nextStart - start))
-        }
-        // 開始〜終了が既存と重なる場合はさらに縮める
-        while duration >= longPressPlaceStepMinutes,
-              isOverlapping(start: start, duration: duration, excluding: nil, on: date) {
-            duration -= longPressPlaceStepMinutes
-        }
-        return max(0, duration)
-    }
-
-   // Debug: 指定時刻から指定分のテストタスクをタイムラインに追加
-    func addTestTask(startDate: Date, durationMinutes: Int) {
-        let cal = Calendar.current
-        let startOfDay = cal.startOfDay(for: startDate)
-        let startMinutes = Int(startDate.timeIntervalSince(startOfDay) / 60)
-        let item = TimelineItem(
-            title: "テスト",
-            durationMinutes: durationMinutes,
-            startMinutes: startMinutes,
-            dropDate: startOfDay,
-            priority: .medium
-        )
-        items.append(item)
-        persistItems()
-    }
-
-   // ストックに新規タスクを追加する（未配置のまま）
-    func addStockItem(title: String, durationMinutes: Int, priority: TaskPriority = .medium) {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return }
-        items.append(
-            TimelineItem(
-                title: trimmedTitle,
-                durationMinutes: durationMinutes,
-                priority: priority
-            )
-        )
-        persistItems()
-        AnalyticsService.logTaskCreate(
-            placement: "stock",
-            durationMinutes: durationMinutes,
-            priority: priority.displayName
-        )
-    }
-
-    /// 作成モーダルから追加。start/end がある場合はタイムラインに配置、なければ Stock へ。
-    func createItem(
+    /// 作成シートの「作成」。開始・終了の指定があればタイムラインへ、無ければ Stock へ追加する。
+    func createTask(
         title: String,
         durationMinutes: Int,
         priority: TaskPriority,
         startDate: Date?,
         endDate: Date?
     ) {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return }
-
-        if let startDate, let endDate, endDate > startDate {
-            let cal = Calendar.current
-            let startOfDay = cal.startOfDay(for: startDate)
-            let startMinutes = Int(startDate.timeIntervalSince(startOfDay) / 60)
-            let rawDuration = Int(endDate.timeIntervalSince(startDate) / 60)
-            let snappedDuration = max(5, (rawDuration / 5) * 5)
-            let finalDuration = clampDuration(start: startMinutes, duration: snappedDuration)
-            guard !isOverlapping(start: startMinutes, duration: finalDuration, excluding: nil, on: startOfDay) else {
-                // 重なる場合は Stock にフォールバック
-                addStockItem(title: trimmedTitle, durationMinutes: finalDuration, priority: priority)
-                return
-            }
-            items.append(
-                TimelineItem(
-                    title: trimmedTitle,
-                    durationMinutes: finalDuration,
-                    startMinutes: startMinutes,
-                    dropDate: startOfDay,
-                    priority: priority
-                )
-            )
-            persistItems()
-            AnalyticsService.logTaskCreate(
-                placement: "timeline",
-                durationMinutes: finalDuration,
-                priority: priority.displayName
-            )
-            return
-        }
-
-        addStockItem(title: trimmedTitle, durationMinutes: durationMinutes, priority: priority)
-    }
-
-    // MARK: Resize - アイテムの時間変更
-
-   // リサイズハンドル操作中の所要時間プレビューを更新する
-    func updateResizePreview(item: TimelineItem, deltaY: CGFloat) {
-        print("updateResizePreview")
-        guard let startMinutes = item.startMinutes else { return }
-        let duration = durationForResize(item: item, deltaY: deltaY)
-        let baseDate = item.dropDate ?? selectedDate
-        resizePreview = TimelineItem(
-            title: item.title,
-            durationMinutes: duration,
-            startMinutes: startMinutes,
-            dropDate: selectedDropDate(for: baseDate),
-            priority: item.priority
-        )
-        resizingItemID = item.id
-    }
-
-   // リサイズ操作を確定し、タスクの所要時間を保存する
-    func commitResize(item: TimelineItem, deltaY: CGFloat) {
-        print("commitResize")
-        defer {
-            resizePreview = nil
-            resizingItemID = nil
-        }
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        let duration = durationForResize(item: item, deltaY: deltaY)
-        guard let startMinutes = item.startMinutes else { return }
-        let baseDate = item.dropDate ?? selectedDate
-        guard !isOverlapping(start: startMinutes, duration: duration, excluding: item.id, on: baseDate) else { return }
-        items[index].durationMinutes = duration
-        persistItems()
-    }
-    
-    // MARK: Drop preview
-
-   // ドラッグ中のドロップ位置に合わせてゴーストプレビューを更新する
-    func updatePreview(item: TimelineItem, dropY: CGFloat, on date: Date) {
-        print("updatePreview")
-        let start = startMinutesForDrop(duration: item.durationMinutes, dropY: dropY, on: date)
-        dropPreview = TimelineItem(
-            id: item.id,
-            title: item.title,
-            durationMinutes: item.durationMinutes,
-            startMinutes: start,
-            dropDate: selectedDropDate(for: date),
-            priority: item.priority
-        )
-    }
-
-    // MARK: ストック内のアイテム移動
-
-   // ストック内のタスク並び順を変更する（タイムライン配置済みは末尾に維持）
-    func moveTaskItems(from: IndexSet, to: Int) {
-        print("moveTaskItems")
-        var tasks = items.filter { $0.dropDate == nil }
-        let scheduled = items.filter { $0.dropDate != nil }
-        let clampedTo = min(to, tasks.count)
-        tasks.move(fromOffsets: from, toOffset: clampedTo)
-        items = tasks + scheduled
-        persistItems()
-    }
-    
-    // MARK: 削除
-
-   // タスクを削除する（カレンダーイベントも連動削除）
-    func deleteItem(id: UUID) {
-        repository.deleteItemAndEvent(id: id)
-        items = repository.fetchItems()
-        rescheduleTimelineNotifications()
-        markLiveActivitySyncPending()
-        AnalyticsService.log(AnalyticsService.Event.taskDelete)
-    }
-
-   // タイムライン上のアイテムをストックに戻す（開始時刻・日付を解除）
-    func returnItemToStock(id: UUID) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        dropPreview = nil
-        previewItemID = nil
-        dragItemID = nil
-        items[index].startMinutes = nil
-        items[index].dropDate = nil
-        persistItems()
-    }
-
-   // タイムライン上のアイテムを完了にする（isCompleted = true、タイムライン上には残す）
-    func completeItem(id: UUID) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        dropPreview = nil
-        previewItemID = nil
-        dragItemID = nil
-        resizePreview = nil
-        resizingItemID = nil
-        items[index].isCompleted = true
-        persistItems()
-        AnalyticsService.log(AnalyticsService.Event.taskComplete)
-    }
-
-   // タイムライン上のアイテムの完了を解除する（isCompleted = false）
-    func uncompleteItem(id: UUID) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index].isCompleted = false
-        persistItems()
-    }
-
-   // タイムライン上のタスクタイトルをインライン編集で更新する
-    func updateItemTitle(id: UUID, title: String) {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return }
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        guard items[index].title != trimmedTitle else { return }
-        let current = items[index]
-        items[index] = TimelineItem(
-            id: current.id,
-            title: trimmedTitle,
-            durationMinutes: current.durationMinutes,
-            startMinutes: current.startMinutes,
-            dropDate: current.dropDate,
-            isCompleted: current.isCompleted,
-            priority: current.priority,
-            isAllDay: current.isAllDay,
-            bufferMinutes: current.bufferMinutes
-        )
-        persistItems()
-    }
-
-   // タスク編集シートからタイトル・時間・優先度をまとめて更新する
-    func updateItemDetails(
-        id: UUID,
-        title: String,
-        durationMinutes: Int,
-        priority: TaskPriority
-    ) {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return }
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        let current = items[index]
-        let clampedDuration = clampDuration(start: current.startMinutes ?? 0, duration: durationMinutes)
-        if let startMinutes = current.startMinutes, let dropDate = current.dropDate {
-            guard !isOverlapping(start: startMinutes, duration: clampedDuration, excluding: id, on: dropDate) else { return }
-        }
-        items[index] = TimelineItem(
-            id: current.id,
-            title: trimmedTitle,
-            durationMinutes: clampedDuration,
-            startMinutes: current.startMinutes,
-            dropDate: current.dropDate,
-            isCompleted: current.isCompleted,
+        state.sheet = nil
+        guard let creation = editUseCase.create(
+            title: title,
+            durationMinutes: durationMinutes,
             priority: priority,
-            isAllDay: current.isAllDay,
-            bufferMinutes: current.bufferMinutes
+            startDate: startDate,
+            endDate: endDate,
+            in: state.items
+        ) else { return }
+
+        commit(creation.items)
+        AnalyticsClient.logTaskCreate(
+            placement: creation.placement == .timeline ? "timeline" : "stock",
+            durationMinutes: creation.createdItem.durationMinutes,
+            priority: priority.displayName
         )
-        persistItems()
     }
 
-   // 編集モードを解除（アイテム以外タップ時など）。解除直後の再入ガードをセットする。
-    func exitEditMode() {
-        editMode = .inactive
-        editingItemID = nil
-        dragItemID = nil
-        dropPreview = nil
-        lastEditModeExitedAt = Date()
+    /// 編集シートの「保存」。
+    func updateTask(id: UUID, title: String, durationMinutes: Int, priority: TaskPriority) {
+        state.sheet = nil
+        guard let items = editUseCase.update(
+            itemID: id,
+            title: title,
+            durationMinutes: durationMinutes,
+            priority: priority,
+            in: state.items
+        ) else { return }
+        commit(items)
     }
 
-   // 編集モードへ入るリクエスト。解除直後のクールダウン中は無視して false を返す。
-    func requestEnterEditMode(for itemID: UUID? = nil) -> Bool {
-        if isInEditModeExitCooldown() {
-            lastEditModeExitedAt = nil
-            return false
-        }
-        lastEditModeExitedAt = nil
-        editingItemID = itemID
-        editMode = .active
-        return true
-    }
-
-   // 解除直後のクールダウン中か（ドラッグ開始時もこの判定を使う）
-    func isInEditModeExitCooldown() -> Bool {
-        guard let t = lastEditModeExitedAt else { return false }
-        return Date().timeIntervalSince(t) < editModeReenterCooldown
-    }
-
-    // MARK: 表示用クエリ
-
-   // 選択中日付のタイムライン表示用アイテム（終日を除く）
-    var itemsForSelectedDate: [TimelineItem] {
-        items(for: selectedDate)
-    }
-
-   // 指定日のタイムライン表示用アイテム（終日を除く）
-    func items(for date: Date) -> [TimelineItem] {
-        items.filter { item in
-            guard !item.isAllDay else { return false }
-            guard let dropDate = item.dropDate else { return false }
-            return Calendar.current.isDate(dropDate, inSameDayAs: date)
-        }
-    }
-
-   // 指定日の終日タスク一覧
-    func allDayItems(for date: Date) -> [TimelineItem] {
-        items.filter { item in
-            guard item.isAllDay else { return false }
-            guard let dropDate = item.dropDate else { return false }
-            return Calendar.current.isDate(dropDate, inSameDayAs: date)
-        }
-    }
-
-   // 日付から0時起算の経過分を返す（現在時刻ライン描画用）
-    func minutesSinceMidnight(date: Date) -> Int {
-        let cal = Calendar.current
-        let comps = cal.dateComponents([.hour, .minute], from: date)
-        let h = comps.hour ?? 0
-        let m = comps.minute ?? 0
-        return (h * 60) + m
-    }
-
-   // 日付を HH:mm 形式の文字列に変換する
-    func currentTimeText(date: Date) -> String {
-        let cal = Calendar.current
-        let comps = cal.dateComponents([.hour, .minute], from: date)
-        let h = comps.hour ?? 0
-        let m = comps.minute ?? 0
-        return String(format: "%02d:%02d", h, m)
-    }
-
-   // 開始分をタイムライン上の Y オフセット（pt）に変換する
-    func yOffset(for startMinutes: Int) -> CGFloat {
-        (CGFloat(startMinutes) / 60) * hourHeight * zoomScale
-    }
-
-   // 所要時間（分）をタイムライン上の高さ（pt）に変換する
-    func heightForDuration(_ minutes: Int) -> CGFloat {
-        (CGFloat(minutes) / 60) * hourHeight * zoomScale
-    }
-
-    private var appGroupDefaults: UserDefaults? {
-        UserDefaults(suiteName: AppGroup.id)
-    }
-
-    private var isBufferNotificationEnabled: Bool {
-        let isSubscribed = appGroupDefaults?.bool(forKey: SubscriptionManager.subscriptionStateUserDefaultsKey) ?? false
-        let isEnabledByUser = appGroupDefaults?.object(forKey: AppGroup.bufferNotificationEnabledKey) as? Bool ?? false
-        return isSubscribed && isEnabledByUser
-    }
-
-    private var isLiveActivityEnabled: Bool {
-        let isEnabledByUser = appGroupDefaults?.object(forKey: AppGroup.liveActivityEnabledKey) as? Bool ?? true
-        return isEnabledByUser
-    }
-
-    private var isPlusSubscriber: Bool {
-        appGroupDefaults?.bool(forKey: SubscriptionManager.subscriptionStateUserDefaultsKey) ?? false
-    }
-
-    /// 無料: 1件。PLUS かつ複数表示ON: 最大3件。PLUS でも複数表示OFFなら1件。
-    private var liveActivityPlanScope: LiveActivityScheduleBuilder.PlanScope {
-        guard isPlusSubscriber else { return .free }
-        let multipleEnabled = appGroupDefaults?.object(forKey: AppGroup.liveActivityMultipleEnabledKey) as? Bool ?? true
-        return multipleEnabled ? .plus : .free
-    }
-
-    private func effectiveBufferMinutes(for item: TimelineItem) -> Int? {
-        guard isBufferNotificationEnabled else { return nil }
-        let global = appGroupDefaults?.object(forKey: AppGroup.globalBufferMinutesKey) as? Int
-            ?? Self.defaultGlobalBufferMinutes
-        let candidate = item.bufferMinutes ?? global
-        let clamped = min(max(candidate, Self.minBufferMinutes), Self.maxBufferMinutes)
-        return clamped
-    }
-
-   // 短いフォーマットの残り時間（例: 14:32 / 1:23）
-    private static func shortCountdownString(to targetDate: Date) -> String {
-        let s = max(0, Int(targetDate.timeIntervalSinceNow))
-        if s >= 3600 {
-            let h = s / 3600
-            let m = (s % 3600) / 60
-            return String(format: "%d:%02d", h, m)
-        }
-        let m = s / 60
-        let sec = s % 60
-        return String(format: "%d:%02d", m, sec)
-    }
-
-    private func durationForResize(item: TimelineItem, deltaY: CGFloat) -> Int {
-        let deltaMinutes = Int((deltaY / (hourHeight * zoomScale)) * 60)
-        let rawDuration = item.durationMinutes + deltaMinutes
-        let snapped = snap(minutes: rawDuration, step: resizeDurationStepMinutes)
-        let startMinutes = item.startMinutes ?? 0
-        return clampDuration(start: startMinutes, duration: snapped)
-    }
-
-    private func startMinutesForDrop(duration: Int, dropY: CGFloat, on date: Date) -> Int {
-        let minutes = minutesFromOffset(dropY, on: date)
-        let snapped = snap(minutes: minutes, step: minuteStep)
-        return clampStart(start: snapped, duration: duration)
-    }
-
-   // 指定日の列でY座標→開始分
-    private func minutesFromOffset(_ y: CGFloat, on date: Date) -> Int {
-        minutesFromOffset(y)
-    }
-    
-    private func minutesFromOffset(_ y: CGFloat) -> Int {
-        let minutes = Int((y / (hourHeight * zoomScale)) * 60)
-        return max(0, min(24 * 60, minutes))
-    }
-
-    private func secondsSinceMidnight(date: Date) -> Int {
-        let cal = Calendar.current
-        let comps = cal.dateComponents([.hour, .minute, .second], from: date)
-        let h = comps.hour ?? 0
-        let m = comps.minute ?? 0
-        let s = comps.second ?? 0
-        return (h * 3600) + (m * 60) + s
-    }
-
-   // 指定秒数（0時からの経過秒）より後に開始する最初の予定を返す。カウントダウン0まで「次」を維持し、Dynamic Island / Live Activity で次の予定に切り替えるため秒単位で比較する。
-    private func nextItem(afterSeconds seconds: Int) -> TimelineItem? {
-        let candidates: [(TimelineItem, Int)] = itemsForSelectedDate.compactMap { item in
-            guard let minutes = item.startMinutes else { return nil }
-            return (item, minutes * 60)
-        }
-        return candidates
-            .filter { $0.1 > seconds }
-            .min(by: { $0.1 < $1.1 })?
-            .0
-    }
-
-   // 今日の予定から、指定秒数より後に開始する最初の予定を返す。
-    private func nextTodayItem(afterSeconds seconds: Int) -> TimelineItem? {
-        let cal = Calendar.current
-        let candidates: [(TimelineItem, Int)] = items.compactMap { item in
-            guard let minutes = item.startMinutes, let dropDate = item.dropDate else { return nil }
-            guard cal.isDateInToday(dropDate) else { return nil }
-            return (item, minutes * 60)
-        }
-        return candidates
-            .filter { $0.1 > seconds }
-            .min(by: { $0.1 < $1.1 })?
-            .0
-    }
-
-    private func isOverlapping(start: Int, duration: Int, excluding id: UUID?, on date: Date) -> Bool {
-        let end = start + duration
-        return items.contains { item in
-            if let id, item.id == id { return false }
-            guard let itemStart = item.startMinutes,
-                  let dropDate = item.dropDate,
-                  Calendar.current.isDate(dropDate, inSameDayAs: date)
-            else { return false }
-            let itemEnd = itemStart + item.durationMinutes
-            return start < itemEnd && end > itemStart
-        }
-    }
-
-   // 開始・終了時刻の表示用文字列（例: 09:00 - 10:30）を生成する
-    static func timeRangeText(startMinutes: Int?, durationMinutes: Int) -> String {
-        guard let startMinutes else { return "" }
-        let start = minutesToTime(startMinutes)
-        let end = minutesToTime(startMinutes + durationMinutes)
-        return "\(start) - \(end)"
-    }
-
-    private static func minutesToTime(_ minutes: Int) -> String {
-        let h = minutes / 60
-        let m = minutes % 60
-        return String(format: "%02d:%02d", h, m)
-    }
-
-    private func persistItems() {
-        repository.saveItems(items)
-        rescheduleTimelineNotifications()
+    /// 編集シートの「削除」。標準カレンダーに同期済みのイベントも削除される。
+    func deleteTask(id: UUID) {
+        state.sheet = nil
+        repository.deleteItem(id: id)
+        setItems(repository.fetchItems())
+        notificationRepository.rescheduleAll(items: state.items)
         markLiveActivitySyncPending()
+        AnalyticsClient.log(AnalyticsClient.Event.taskDelete)
     }
 
-    private func selectedDropDate(for date: Date) -> Date {
-        Calendar.current.startOfDay(for: date)
-    }
-    
-    private func bootstrapItems() {
-        let stored = repository.fetchItems()
-        if stored.isEmpty {
-            repository.saveItems(items)
-        } else {
-            items = stored
+    // MARK: - タブバーからの通知
+
+    /// 表示中のタイムラインタブをもう一度タップした。今日以外を表示中なら今日へ戻り、現在時刻へスクロールする。
+    func timelineTabDidReselect() {
+        let today = editUseCase.calendar.startOfDay(for: now())
+        if state.selectedDate != today {
+            state.selectedDate = today
         }
-        rescheduleTimelineNotifications()
+        state.scrollToNowRequestID = UUID()
     }
 
-    private func startCalendarSyncPolling() {
-        calendarSyncTimer = Timer
-            .publish(every: 10, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                self?.refreshItemsFromRepository()
-            }
-    }
-
-    private func refreshItemsFromRepository() {
-        let stored = repository.fetchItems()
-        guard stored != items else { return }
-        items = stored
-        rescheduleTimelineNotifications()
-        markLiveActivitySyncPending()
-    }
-
-    private func rescheduleTimelineNotifications() {
-        startNotificationScheduler.reschedule(items: items)
-        bufferNotificationScheduler.reschedule(items: items)
-    }
-
-    private func snap(minutes: Int, step: Int) -> Int {
-        let remainder = minutes % step
-        let lower = minutes - remainder
-        let upper = lower + step
-        return (minutes - lower) < (upper - minutes) ? lower : upper
-    }
-
-    private func clampStart(start: Int, duration: Int) -> Int {
-        let maxStart = max(0, (24 * 60) - duration)
-        return max(0, min(maxStart, start))
-    }
-
-    private func clampDuration(start: Int, duration: Int) -> Int {
-        let maxDuration = max(minResizeDurationMinutes, (24 * 60) - start)
-        return max(minResizeDurationMinutes, min(maxDuration, duration))
-    }
-
-    private func markLiveActivitySyncPending() {
-        guard isLiveActivityEnabled else { return }
-        LiveActivitySyncCoordinator.markPending()
-        state.isLiveActivitySyncPending = true
-        print("[LiveActivity] Sync pending — commit on complete or manual refresh")
-    }
-
-    /// 編集完了 / 手動更新時: ローカル LA 更新 + Firestore 予定同期（Functions が Tasks 再登録）
-    /// クラウド同期成功時はローカルローテーションを使わず APNs のみにする。
-    func commitPendingLiveActivitySync(force: Bool = false) async {
-        guard force || LiveActivitySyncCoordinator.isPending else { return }
-        guard isLiveActivityEnabled else {
-            LiveActivitySyncCoordinator.clearPending()
-            state.isLiveActivitySyncPending = false
-            cancelLocalLiveActivityRotation()
+    /// タブバー右端のボタン（編集中は「完了」、それ以外は「更新」）をタップした。
+    ///
+    /// 編集モードを抜け、未反映の変更があれば Live Activity へ反映する。
+    /// チュートリアルの最終ステップでは、未反映の変更が無くても反映してチュートリアルを終える。
+    func trailingActionDidTap() async {
+        let isTutorialFinalStep = state.tutorialStep == .confirmComplete
+        if state.isEditing {
+            exitEditMode()
+        } else if state.isLiveActivityRefreshing {
             return
         }
-        print("[LiveActivity] Committing sync (force=\(force))")
-        let rotations = await startOrUpdateLiveActivity(scheduleLocalRotationFallback: false)
-        do {
-            try await TimelineFirestoreSyncService.shared.syncTodaySchedules(
-                items: items,
-                maxVisibleSlots: liveActivityPlanScope.maxVisibleSlots
-            )
-            cancelLocalLiveActivityRotation()
-            LiveActivitySyncCoordinator.clearPending()
-            state.isLiveActivitySyncPending = false
-            print("[LiveActivity] Cloud sync succeeded — rotations will come from APNs only")
-        } catch {
-            if let rotations {
-                scheduleNextLocalRotation(rotations)
-            }
-            LiveActivitySyncCoordinator.markPending()
-            state.isLiveActivitySyncPending = true
-            print("[LiveActivity] Firestore sync failed — local rotation fallback enabled: \(error.localizedDescription)")
-        }
-    }
 
-    /// 編集完了ボタン用: 編集モード解除後に、未反映なら LA / クラウド同期する。
-    func completeEditingAndSyncLiveActivity() async {
-        let isTutorialCompleteStep = state.tutorialStep == .confirmComplete
-        exitEditMode()
-        let shouldSync = isTutorialCompleteStep
+        let needsSync = isTutorialFinalStep
             || state.isLiveActivitySyncPending
-            || LiveActivitySyncCoordinator.isPending
-        guard shouldSync, !state.isLiveActivityRefreshing else {
-            if isTutorialCompleteStep {
-                await finishFirstRunTutorial(skipped: false)
-            }
-            return
+            || liveActivityRepository.isSyncPending
+        if needsSync, !state.isLiveActivityRefreshing {
+            await syncLiveActivity()
         }
-
-        let startedAt = Date()
-        state.isLiveActivityRefreshing = true
-        await commitPendingLiveActivitySync(force: true)
-        AnalyticsService.log(AnalyticsService.Event.liveActivityRefresh)
-        let remainingDisplayTime = 1.0 - Date().timeIntervalSince(startedAt)
-        if remainingDisplayTime > 0 {
-            try? await Task.sleep(nanoseconds: UInt64(remainingDisplayTime * 1_000_000_000))
-        }
-        state.isLiveActivityRefreshing = false
-        if isTutorialCompleteStep {
+        if isTutorialFinalStep {
             await finishFirstRunTutorial(skipped: false)
         }
     }
-}
 
-// MARK: - LiveActivity
-extension TimelineViewModel {
+    // MARK: - TimelineDelegate: 日付・表示
 
-    /// 今日の予定からスタック型 Live Activity をローカル更新する。
-    /// - Parameter scheduleLocalRotationFallback: true のときだけ次切り替えをローカル予約する（クラウド同期失敗時用）。
-    /// - Returns: 組み立てた ro」tations（フォールバック予約用）。更新できない場合は nil。
-    @discardableResult
-    func startOrUpdateLiveActivity(scheduleLocalRotationFallback: Bool = false) async -> [LiveActivityScheduleBuilder.Rotation]? {
-        guard isLiveActivityEnabled else {
-            await endLiveActivityIfNeeded()
-            return nil
-        }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return nil }
-
-        let now = Date()
-        let planScope = liveActivityPlanScope
-        let entries = LiveActivityScheduleBuilder.entriesForToday(
-            items: items,
-            referenceDate: now,
-            planScope: planScope
-        )
-        let (startIndex, window) = LiveActivityScheduleBuilder.currentWindow(
-            entries: entries,
-            now: now,
-            planScope: planScope
-        )
-
-        guard !window.isEmpty else {
-            await endLiveActivityIfNeeded()
-            return nil
-        }
-
-        let schedule = Array(
-            LiveActivityScheduleBuilder.buildTaskItems(
-                from: window,
-                now: now,
-                bufferMinutes: { [weak self] item in
-                    self?.effectiveBufferMinutes(for: item)
-                }
-            ).prefix(planScope.maxVisibleSlots)
-        )
-        let rotations = LiveActivityScheduleBuilder.buildRotations(
-            entries: entries,
-            startIndex: startIndex,
-            now: now,
-            planScope: planScope,
-            bufferMinutes: { [weak self] item in
-                self?.effectiveBufferMinutes(for: item)
-            }
-        )
-
-        print("[LiveActivity] Plan scope: \(planScope == .plus ? "PLUS" : "free"), entries: \(entries.count), visible: \(schedule.count), slots: \(planScope.maxVisibleSlots)")
-
-        let staleDate = entries[startIndex].startDate
-        await upsertStackLiveActivity(schedule: schedule, staleDate: staleDate)
-
-        if scheduleLocalRotationFallback {
-            scheduleNextLocalRotation(rotations)
-        } else {
-            cancelLocalLiveActivityRotation()
-        }
-        return rotations
+    func timelineDidSelectDate(_ date: Date) {
+        let day = editUseCase.calendar.startOfDay(for: date)
+        guard state.selectedDate != day else { return }
+        state.selectedDate = day
     }
 
-    /// プライマリのカウントダウンが 0:00 を過ぎていたら、次の予定へ切り替える。
-    func refreshLiveActivityIfOverdue() async {
-        guard isLiveActivityEnabled else { return }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        guard let activity = Activity<MAMONAKULiveActivityAttributes>.activities.first(where: {
-            isManagedLiveActivity($0)
-        }) else { return }
+    func timelineDidTapDateLabel() {
+        state.sheet = .datePicker
+    }
 
-        guard let primary = activity.content.state.schedule.first,
-              let target = primary.nextStartDate,
-              target <= Date()
+    func timelineDidPinch(by factor: CGFloat) {
+        state.layout.zoom(by: factor)
+    }
+
+    // MARK: - TimelineDelegate: 空き領域（長押しで予定を作成）
+
+    func timelineDidTapEmptyArea() {
+        guard state.pendingPlacement?.isAwaitingTitle == true else { return }
+        state.pendingPlacement = nil
+    }
+
+    func timelineDidBeginLongPress(on date: Date, y: CGFloat) {
+        guard let pending = editUseCase.beginPendingPlacement(
+            atMinutes: state.layout.minutes(atY: y),
+            on: date,
+            in: state.items
+        ) else { return }
+        state.pendingPlacement = pending
+    }
+
+    func timelineDidMoveLongPress(on date: Date, y: CGFloat) {
+        guard let pending = state.pendingPlacement,
+              !pending.isAwaitingTitle,
+              editUseCase.calendar.isDate(pending.date, inSameDayAs: date)
         else { return }
-
-        print("[LiveActivity] Overdue refresh — primary target was \(target.formatted())")
-        // 表示の直しのみ。継続ローテーションは APNs（または同期失敗時フォールバック）に任せる
-        await startOrUpdateLiveActivity(scheduleLocalRotationFallback: false)
+        state.pendingPlacement = editUseCase.extendPendingPlacement(
+            pending,
+            toMinutes: state.layout.minutes(atY: y),
+            in: state.items
+        )
     }
 
-    /// Cloud Tasks / APNs が使えない場合のフォールバック。次のローテーション時刻にローカル更新する。
-    private func scheduleNextLocalRotation(_ rotations: [LiveActivityScheduleBuilder.Rotation]) {
-        cancelLocalLiveActivityRotation()
-
-        guard let next = rotations
-            .filter({ $0.switchAt > Date() })
-            .min(by: { $0.switchAt < $1.switchAt })
-        else { return }
-
-        liveActivityRefreshTask = Task { [weak self] in
-            let delay = next.switchAt.timeIntervalSinceNow
-            if delay > 0 {
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            }
-            guard !Task.isCancelled else { return }
-            await self?.handleLocalRotation(next)
-        }
-
-        print("[LiveActivity] Local rotation fallback scheduled at \(next.switchAt.formatted()) (\(next.reason))")
-    }
-
-    private func cancelLocalLiveActivityRotation() {
-        liveActivityRefreshTask?.cancel()
-        liveActivityRefreshTask = nil
-    }
-
-    private func handleLocalRotation(_ rotation: LiveActivityScheduleBuilder.Rotation) async {
-        print("[LiveActivity] Local rotation fallback fired — \(rotation.reason)")
-        if rotation.shouldEndActivity {
-            await endLiveActivityIfNeeded()
+    func timelineDidEndLongPress() {
+        guard var pending = state.pendingPlacement, !pending.isAwaitingTitle else { return }
+        guard pending.durationMinutes >= TimelineItemEditUseCase.longPressStepMinutes else {
+            state.pendingPlacement = nil
             return
         }
-        // フォールバック連鎖: まだクラウド未同期ならローカル予約を続ける
-        await startOrUpdateLiveActivity(scheduleLocalRotationFallback: LiveActivitySyncCoordinator.isPending)
+        pending.isAwaitingTitle = true
+        state.pendingPlacement = pending
     }
 
-    private func endLiveActivityIfNeeded() async {
-        cancelLocalLiveActivityRotation()
+    func timelineDidCancelLongPress() {
+        state.pendingPlacement = nil
+    }
 
-        let activities = Activity<MAMONAKULiveActivityAttributes>.activities
-        for liveActivity in activities where isManagedLiveActivity(liveActivity) {
-            await liveActivity.end(dismissalPolicy: .immediate)
+    func timelineDidSubmitPendingPlacementTitle(_ title: String) {
+        guard let pending = state.pendingPlacement else { return }
+        state.pendingPlacement = nil
+        guard let creation = editUseCase.confirm(pending, title: title, in: state.items) else { return }
+
+        commit(creation.items)
+        AnalyticsClient.logTaskCreate(
+            placement: "timeline_long_press",
+            durationMinutes: pending.durationMinutes,
+            priority: creation.createdItem.priority.displayName
+        )
+        // 作成直後に微調整できるよう編集モードへ入る
+        requestEnterEditMode()
+    }
+
+    // MARK: - TimelineDelegate: タイムライン上の予定
+
+    func timelineDidLongPressItem(id: UUID) {
+        requestEnterEditMode()
+    }
+
+    func timelineDidRenameItem(id: UUID, title: String) {
+        guard let items = editUseCase.rename(itemID: id, title: title, in: state.items) else { return }
+        commit(items)
+    }
+
+    func timelineDidDragResizeHandle(itemID: UUID, translation: CGFloat) {
+        guard let item = item(id: itemID),
+              let preview = editUseCase.resizePreview(
+                of: item,
+                deltaMinutes: state.layout.minutes(forTranslation: translation),
+                fallbackDate: state.selectedDate
+              )
+        else { return }
+        state.resizePreview = preview
+    }
+
+    func timelineDidReleaseResizeHandle(itemID: UUID, translation: CGFloat) {
+        state.resizePreview = nil
+        guard let items = editUseCase.resize(
+            itemID: itemID,
+            deltaMinutes: state.layout.minutes(forTranslation: translation),
+            fallbackDate: state.selectedDate,
+            in: state.items
+        ) else { return }
+        commit(items)
+    }
+
+    func timelineDidBeginDraggingItem(id: UUID) {
+        state.draggingItemID = id
+        if !isInEditModeExitCooldown {
+            state.isEditing = true
         }
     }
 
-    private func isManagedLiveActivity(_ activity: Activity<MAMONAKULiveActivityAttributes>) -> Bool {
-        activity.attributes.name == liveActivityStackName
-            || activity.attributes.name.hasPrefix(liveActivityNamePrefix)
+    // MARK: - TimelineDelegate: タイムラインへのドロップ
+
+    func timelineDidIdentifyDropItem(id: UUID) {
+        state.dropItemID = id
     }
 
-    private func clearLegacyTimelineActivities() async {
-        let existingActivities = Activity<MAMONAKULiveActivityAttributes>.activities
-        for liveActivity in existingActivities where liveActivity.attributes.name.hasPrefix(liveActivityNamePrefix) {
-            await liveActivity.end(dismissalPolicy: .immediate)
+    func timelineDidHoverDrop(itemID: UUID, on date: Date, y: CGFloat) {
+        guard let item = item(id: itemID) else { return }
+        state.dropPreview = editUseCase.dropPreview(
+            of: item,
+            atMinutes: state.layout.minutes(atY: y),
+            on: date
+        )
+    }
+
+    func timelineDidExitDropArea() {
+        state.dropPreview = nil
+        state.dropItemID = nil
+    }
+
+    func timelineDidDropItem(id: UUID, on date: Date, y: CGFloat) {
+        guard let item = item(id: id),
+              let items = editUseCase.place(
+                itemID: id,
+                atMinutes: state.layout.minutes(atY: y),
+                on: date,
+                in: state.items
+              )
+        else { return }
+
+        commit(items)
+        if item.isInStock {
+            // Stock から置いた直後は、そのまま微調整できるよう編集モードへ入る
+            requestEnterEditMode()
         }
     }
 
-    private func upsertStackLiveActivity(schedule: [ActivityTaskItem], staleDate: Date?) async {
-        let attributes = MAMONAKULiveActivityAttributes(name: liveActivityStackName)
-        let state = MAMONAKULiveActivityAttributes.ContentState(schedule: schedule)
-        let content = ActivityContent(state: state, staleDate: staleDate, relevanceScore: 1.0)
+    func timelineDidFinishDrop() {
+        clearDragState()
+    }
 
-        if let existing = Activity<MAMONAKULiveActivityAttributes>.activities.first(where: {
-            $0.attributes.name == liveActivityStackName
-        }) {
-            await existing.update(content)
-            print("[LiveActivity] Local update — schedule: \(schedule.map(\.nextTitle).joined(separator: " → "))")
-            LiveActivityPushService.shared.observeUpdateToken(for: existing)
-            return
+    // MARK: - TimelineDelegate: Stock
+
+    func timelineDidTapAddTask() {
+        state.sheet = .createTask
+    }
+
+    func timelineDidTapStockItem(id: UUID) {
+        guard let item = item(id: id) else { return }
+        state.sheet = .editTask(item)
+    }
+
+    func timelineDidBeginDraggingStockItem(id: UUID) {
+        state.draggingItemID = id
+    }
+
+    func timelineDidEndDraggingStockItem() {
+        state.draggingItemID = nil
+    }
+
+    func timelineDidMoveStockItem(fromIndex: Int, toOffset: Int) {
+        guard let items = editUseCase.moveStockItem(
+            fromIndex: fromIndex,
+            toOffset: toOffset,
+            in: state.items
+        ) else { return }
+        commit(items)
+    }
+
+    func timelineDidDropItemOnStock(id: UUID) {
+        guard let item = item(id: id), !item.isInStock,
+              let items = editUseCase.returnToStock(itemID: id, in: state.items)
+        else { return }
+        clearDragState()
+        commit(items)
+    }
+
+    // MARK: - TimelineDelegate: チュートリアル
+
+    func timelineDidTapSkipTutorial() {
+        Task { await finishFirstRunTutorial(skipped: true) }
+    }
+
+    // MARK: - 予定の反映
+
+    private func item(id: UUID) -> TimelineItem? {
+        state.items.first { $0.id == id }
+    }
+
+    /// 画面上の予定を差し替える。チュートリアルの進行と、編集中の予定が消えた場合のシートも合わせて更新する。
+    private func setItems(_ items: [TimelineItem]) {
+        state.items = items
+        advanceTutorialIfTaskPlaced()
+        if case .editTask(let editing) = state.sheet, item(id: editing.id) == nil {
+            state.sheet = nil
         }
+    }
 
-        await clearLegacyTimelineActivities()
+    /// 編集結果を画面と保存先に反映し、通知を登録し直して、Live Activity を「未反映」にする。
+    private func commit(_ items: [TimelineItem]) {
+        setItems(items)
+        repository.saveItems(items)
+        notificationRepository.rescheduleAll(items: items)
+        markLiveActivitySyncPending()
+    }
 
-        do {
-            // 新規 Activity の update トークンは作り直されるため、古いキャッシュでは同期しない
-            LiveActivityPushService.shared.invalidateCachedLiveActivityUpdateToken()
-            let created = try Activity.request(
-                attributes: attributes,
-                content: content,
-                pushType: .token
-            )
-            print("[LiveActivity] Created — schedule: \(schedule.map(\.nextTitle).joined(separator: " → "))")
-            LiveActivityPushService.shared.observeUpdateToken(for: created)
-        } catch {
-            print("[LiveActivity] Creation failed: \(error.localizedDescription)")
+    private func startPollingRepository(every interval: Duration) {
+        pollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: interval)
+                guard let self else { return }
+                self.reloadItemsIfChanged()
+            }
         }
+    }
+
+    private func reloadItemsIfChanged() {
+        let stored = repository.fetchItems()
+        guard stored != state.items else { return }
+        setItems(stored)
+        notificationRepository.rescheduleAll(items: stored)
+        markLiveActivitySyncPending()
+    }
+
+    private func clearDragState() {
+        state.dropPreview = nil
+        state.dropItemID = nil
+        state.draggingItemID = nil
+    }
+
+    // MARK: - 編集モード
+
+    private var isInEditModeExitCooldown: Bool {
+        guard let lastEditModeExitedAt else { return false }
+        return now().timeIntervalSince(lastEditModeExitedAt) < Self.editModeReenterCooldown
+    }
+
+    /// 編集モードへ入る。編集モードを抜けた直後（クールダウン中）の要求は無視する。
+    private func requestEnterEditMode() {
+        let isCoolingDown = isInEditModeExitCooldown
+        lastEditModeExitedAt = nil
+        guard !isCoolingDown else { return }
+        state.isEditing = true
+    }
+
+    private func exitEditMode() {
+        state.isEditing = false
+        state.draggingItemID = nil
+        state.dropPreview = nil
+        lastEditModeExitedAt = now()
+    }
+
+    // MARK: - Live Activity
+
+    private func markLiveActivitySyncPending() {
+        liveActivityRepository.markSyncPending()
+        state.isLiveActivitySyncPending = liveActivityRepository.isSyncPending
+    }
+
+    private func syncLiveActivity() async {
+        let startedAt = Date()
+        state.isLiveActivityRefreshing = true
+        await liveActivityRepository.commitSync()
+        state.isLiveActivitySyncPending = liveActivityRepository.isSyncPending
+        AnalyticsClient.log(AnalyticsClient.Event.liveActivityRefresh)
+
+        let remaining = minimumRefreshIndicatorDuration - Date().timeIntervalSince(startedAt)
+        if remaining > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+        }
+        state.isLiveActivityRefreshing = false
+    }
+
+    // MARK: - 初回チュートリアル
+
+    private func startFirstRunTutorialIfNeeded() {
+        guard !localDefaults.bool(forKey: Self.tutorialCompletedKey) else { return }
+        let didAddPresetTask = addTutorialPresetTaskIfStockIsEmpty()
+        state.tutorialStep = .placeTaskAfterNow
+        if didAddPresetTask {
+            advanceTutorialIfTaskPlaced()
+        }
+    }
+
+    /// チュートリアルで動かしてもらうタスクを Stock に用意する。
+    private func addTutorialPresetTaskIfStockIsEmpty() -> Bool {
+        guard state.stockItems.isEmpty else { return false }
+        let preset = TimelineItem(title: "はじめてのタスク", durationMinutes: 30, priority: .low)
+        setItems(state.items + [preset])
+        // Stock への追加だけなので、通知の再登録と Live Activity の「未反映」化は不要。
+        repository.saveItems(state.items)
+        return true
+    }
+
+    /// 「現在時刻より後に予定を置く」ステップの達成を確認し、次のステップへ進める。
+    private func advanceTutorialIfTaskPlaced() {
+        guard state.tutorialStep == .placeTaskAfterNow else { return }
+        let nowMinutes = DayTime.minutesSinceMidnight(of: now(), calendar: editUseCase.calendar)
+        let hasPlacedTaskAfterNow = state.items.contains {
+            !$0.isInStock && ($0.startMinutes ?? -1) > nowMinutes
+        }
+        guard hasPlacedTaskAfterNow else { return }
+        state.tutorialStep = .confirmComplete
+    }
+
+    /// チュートリアルを終える。最後まで進めた場合は、ここで通知の許可を求める。
+    private func finishFirstRunTutorial(skipped: Bool) async {
+        guard state.tutorialStep != nil else { return }
+        state.tutorialStep = nil
+        localDefaults.set(true, forKey: Self.tutorialCompletedKey)
+        AnalyticsClient.log(
+            AnalyticsClient.Event.firstRunComplete,
+            parameters: [AnalyticsClient.Param.skipped: skipped]
+        )
+        guard !skipped else { return }
+        await notificationRepository.requestAuthorizationIfNeeded()
     }
 }
-

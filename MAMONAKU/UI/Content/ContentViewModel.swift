@@ -1,11 +1,15 @@
 import Foundation
-import Combine
+import Observation
 
+/// アプリ全体に関わる案内（PLUS の紹介・レビュー依頼）を出すタイミングを管理する。
+///
+/// 起動回数を数え、3 回目に PLUS 紹介シート（未加入時のみ）、5 回目にレビュー依頼を、それぞれ一度だけ出す。
+@Observable
 @MainActor
-final class ContentViewModel: ObservableObject {
+final class ContentViewModel {
     struct ViewState: Equatable {
-        var isSubscriptionPromptPresented: Bool = false
-        var isReviewSatisfactionAlertPresented: Bool = false
+        var isSubscriptionPromptPresented = false
+        var isReviewSatisfactionAlertPresented = false
     }
 
     enum Route: Equatable {
@@ -18,44 +22,28 @@ final class ContentViewModel: ObservableObject {
         static let hasShownReviewSatisfactionPrompt = "engagement.hasShownReviewSatisfactionPrompt"
     }
 
-    @Published private(set) var state: ViewState
-    @Published private(set) var route: Route?
+    private static let subscriptionPromptSession = 3
+    private static let reviewPromptSession = 5
 
-    private let userDefaults: UserDefaults
-    private var hasCountedCurrentLaunch = false
+    private(set) var state = ViewState()
+    /// View 側で実行する副作用（レビュー依頼ダイアログ）の指示。実行後に `handleRouteConsumed` を呼ぶ。
+    private(set) var route: Route?
 
-    init(userDefaults: UserDefaults = .standard) {
+    @ObservationIgnored private let userDefaults: UserDefaults
+    @ObservationIgnored private var hasCountedCurrentLaunch = false
+
+    init(userDefaults: UserDefaults) {
         self.userDefaults = userDefaults
-        self.state = ViewState(
-            isSubscriptionPromptPresented: false,
-            isReviewSatisfactionAlertPresented: false
-        )
     }
 
-    func handleRouteConsumed() {
-        route = nil
-    }
+    /// 起動を 1 回として数え、必要なら案内を出す。同じ起動の中で複数回呼ばれても 1 回しか数えない。
+    func onAppear(isSubscribed: Bool) {
+        guard !hasCountedCurrentLaunch else { return }
+        hasCountedCurrentLaunch = true
 
-    func onAppear(
-        isSubscribed: Bool,
-        isCurrentThemeFree: Bool,
-        applyThemeSystem: () -> Void
-    ) {
-        if !isSubscribed, !isCurrentThemeFree {
-            applyThemeSystem()
-        }
-        handleSessionStartIfNeeded(isSubscribed: isSubscribed)
-    }
-
-    func onSubscriptionChanged(
-        isSubscribed: Bool,
-        isCurrentThemeFree: Bool,
-        applyThemeSystem: () -> Void
-    ) {
-        if !isSubscribed, !isCurrentThemeFree {
-            applyThemeSystem()
-        }
-        handleSessionStartIfNeeded(isSubscribed: isSubscribed)
+        let sessionCount = userDefaults.integer(forKey: Keys.sessionCount) + 1
+        userDefaults.set(sessionCount, forKey: Keys.sessionCount)
+        presentPromptIfNeeded(sessionCount: sessionCount, isSubscribed: isSubscribed)
     }
 
     func dismissSubscriptionPrompt() {
@@ -70,40 +58,32 @@ final class ContentViewModel: ObservableObject {
         route = .requestReview
     }
 
-    private func handleSessionStartIfNeeded(isSubscribed: Bool?) {
-        guard !hasCountedCurrentLaunch else { return }
-        hasCountedCurrentLaunch = true
-
-        let nextSessionCount = userDefaults.integer(forKey: Keys.sessionCount) + 1
-        userDefaults.set(nextSessionCount, forKey: Keys.sessionCount)
-        scheduleEngagementPromptIfNeeded(for: nextSessionCount, isSubscribed: isSubscribed)
+    func handleRouteConsumed() {
+        route = nil
     }
 
-    private func scheduleEngagementPromptIfNeeded(for sessionCount: Int, isSubscribed: Bool?) {
-        let hasShownSubscriptionPrompt = userDefaults.bool(forKey: Keys.hasShownSubscriptionPrompt)
-        let hasShownReviewSatisfactionPrompt = userDefaults.bool(forKey: Keys.hasShownReviewSatisfactionPrompt)
-        let isSubscribedValue = isSubscribed ?? false
-
-        if sessionCount == 3, !hasShownSubscriptionPrompt, !isSubscribedValue {
+    private func presentPromptIfNeeded(sessionCount: Int, isSubscribed: Bool) {
+        if sessionCount == Self.subscriptionPromptSession,
+           !userDefaults.bool(forKey: Keys.hasShownSubscriptionPrompt),
+           !isSubscribed {
             userDefaults.set(true, forKey: Keys.hasShownSubscriptionPrompt)
-            presentAfterInitialTransition { [weak self] in
-                self?.state.isSubscriptionPromptPresented = true
-            }
+            presentAfterInitialTransition { $0.isSubscriptionPromptPresented = true }
             return
         }
 
-        if sessionCount == 5, !hasShownReviewSatisfactionPrompt {
+        if sessionCount == Self.reviewPromptSession,
+           !userDefaults.bool(forKey: Keys.hasShownReviewSatisfactionPrompt) {
             userDefaults.set(true, forKey: Keys.hasShownReviewSatisfactionPrompt)
-            presentAfterInitialTransition { [weak self] in
-                self?.state.isReviewSatisfactionAlertPresented = true
-            }
+            presentAfterInitialTransition { $0.isReviewSatisfactionAlertPresented = true }
         }
     }
 
-    private func presentAfterInitialTransition(_ action: @escaping @MainActor () -> Void) {
-        Task { @MainActor in
+    /// 起動直後の画面遷移が落ち着いてから表示する。
+    private func presentAfterInitialTransition(_ update: @escaping (inout ViewState) -> Void) {
+        Task { [weak self] in
             try? await Task.sleep(nanoseconds: 500_000_000)
-            action()
+            guard let self else { return }
+            update(&self.state)
         }
     }
 }

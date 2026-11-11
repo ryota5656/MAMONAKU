@@ -1,39 +1,83 @@
-import SwiftUI
+import Foundation
 
-/// タイムライン画面の UI 状態（シート・チュートリアル・ラジアルメニューなど）。Screen と 1:1。
+/// タイムライン画面の表示状態。Screen と 1:1。
 struct TimelineViewState: Equatable {
-    var sheetHeight: CGFloat = 0
-    var isHeaderExpanded: Bool = true
-    var isTaskSheetPresented: Bool = true
-    var isDraggingTask: Bool = false
-    var isSheetDropTargeted: Bool = false
-    var isTaskSheetDraggable: Bool = true
-    var taskSheetDetent: PresentationDetent = TaskSheetPresentation.peek
+    /// 全予定（タイムライン配置済み + Stock）。配列の順序が Stock の並び順になる。
+    var items: [TimelineItem] = []
+    /// 表示中の日（その日の 0 時）
+    var selectedDate: Date
+    /// タイムラインの寸法（ピンチによる拡大率を含む）
+    var layout = TimelineLayout()
+
+    /// 編集モード（予定の移動・リサイズ・タイトル変更ができる状態）か
+    var isEditing = false
+    /// ドラッグ中の予定
+    var draggingItemID: UUID?
+    /// ドラッグ元が分からないドロップ（ドラッグ中の予定が未設定）で、ドロップ内容から読み取った予定
+    var dropItemID: UUID?
+    /// ドロップ位置に表示する予定の見た目
+    var dropPreview: TimelineItem?
+    /// リサイズ中の予定の見た目
+    var resizePreview: TimelineItem?
+    /// 長押しで作成中の仮配置
+    var pendingPlacement: PendingPlacement?
+
+    /// カウントダウンヘッダーの高さ（タイムラインシートをその下から始めるために使う）
     var headerHeight: CGFloat = 0
-    var isRadialMenuVisible: Bool = false
-    var radialSelection: TimelineRadialAction? = nil
-    var lastHapticSelection: TimelineRadialAction? = nil
-    var isSettingsPresented: Bool = false
-    var isDeleteButtonTargeted: Bool = false
-    var isReturnToStockTargeted: Bool = false
-    var isLiveActivityRefreshing: Bool = false
-    var isLiveActivitySyncPending: Bool = false
-    var tutorialStep: TimelineTutorialStep? = nil
-    var tutorialPulse: Bool = false
-    var taskSheetSelectedTab: TaskSheetTab = .timeline
-    /// 現在時刻付近へのスクロール要求（値が変わったら WhiteSheet 側で scroll）
-    var scrollToNowRequestID: UUID? = nil
+    /// Live Activity へ反映中か
+    var isLiveActivityRefreshing = false
+    /// 予定の変更がまだ Live Activity に反映されていないか
+    var isLiveActivitySyncPending = false
+    /// 初回チュートリアルの現在のステップ（表示していなければ nil）
+    var tutorialStep: TimelineTutorialStep?
+    /// 現在時刻へのスクロール要求（値が変わったらスクロールする）
+    var scrollToNowRequestID: UUID?
+    /// 表示中のシート
+    var sheet: TimelineSheet?
 }
 
-/// タイムライン長押しで作成中の仮配置
-struct PendingPlacement: Equatable {
-    var date: Date
-    var startMinutes: Int
-    var durationMinutes: Int
-    /// false: ドラッグ中のプレビュー / true: タイトル入力待ち
-    var isAwaitingTitle: Bool
+extension TimelineViewState {
+    /// Stock（未配置）のタスク
+    var stockItems: [TimelineItem] {
+        items.filter(\.isInStock)
+    }
+
+    /// 指定日のタイムラインに並ぶ予定（終日を除く）
+    func timedItems(on date: Date) -> [TimelineItem] {
+        items.filter { !$0.isAllDay && $0.isPlaced(on: date) }
+    }
+
+    /// 指定日の終日予定
+    func allDayItems(on date: Date) -> [TimelineItem] {
+        items.filter { $0.isAllDay && $0.isPlaced(on: date) }
+    }
+
+    /// タイムラインに配置済みの予定をドラッグ中か（Stock へ戻すドロップを受け付ける条件）
+    var isDraggingPlacedItem: Bool {
+        guard let draggingItemID else { return false }
+        return items.contains { $0.id == draggingItemID && !$0.isInStock }
+    }
 }
 
+/// タイムライン画面が表示するシート。
+enum TimelineSheet: Identifiable, Equatable {
+    /// タスク作成
+    case createTask
+    /// タスク編集
+    case editTask(TimelineItem)
+    /// 日付選択
+    case datePicker
+
+    var id: String {
+        switch self {
+        case .createTask: return "createTask"
+        case .editTask(let item): return "editTask-\(item.id.uuidString)"
+        case .datePicker: return "datePicker"
+        }
+    }
+}
+
+/// 初回チュートリアルのステップ。
 enum TimelineTutorialStep: Equatable {
     /// Stock のプリセットを現在時刻より後へドラッグ＆ドロップ
     case placeTaskAfterNow
@@ -46,79 +90,6 @@ enum TimelineTutorialStep: Equatable {
             return "Stock のタスクをドラッグして、現在時刻より後のタイムラインへ置いてみましょう。"
         case .confirmComplete:
             return "右下の完了（✓）をタップして、Live Activity を更新しましょう。"
-        }
-    }
-}
-
-enum TaskSheetPresentation {
-    /// ピーク時に見えるカード部分の高さ（シート外オーバーレイ）
-    static let peekCardHeight: CGFloat = 88
-    /// ピーク時、カード下端とシステムタブバー上端の間隔
-    static let peekBottomGap: CGFloat = 10
-
-    /// ピーク状態を表す detent（シートの折りたたみ先としても使用）
-    static let peek = PresentationDetent.height(peekCardHeight)
-    static let medium = PresentationDetent.fraction(0.45)
-    static let expanded = PresentationDetent.large
-
-    /// 展開シートで使う detent（ピークはシート非表示＋オーバーレイ側。ここに含めると閉じる時に二重アニメでタイムラインが揺れる）
-    static var expandedSheetDetents: Set<PresentationDetent> {
-        [medium, expanded]
-    }
-}
-
-/// メイン画面のタブ。`action` は `Tab(role: .search)` の右端アクション用。
-enum TaskSheetTab: Hashable, CaseIterable, Equatable {
-//    case later
-    case timeline
-//    case ai
-    case settings
-    /// Live Activity 更新 / 編集完了（選択せずアクションのみ発火）
-    case action
-
-    var title: String {
-        switch self {
-//        case .later: return "あとで"
-        case .timeline: return "タイムライン"
-//        case .ai: return "AI"
-        case .settings: return "設定"
-        case .action: return "更新"
-        }
-    }
-
-    var icon: String {
-        switch self {
-//        case .later: return "tray.fill"
-        case .timeline: return "chart.bar.fill"
-//        case .ai: return "sparkles"
-        case .settings: return "gearshape.fill"
-        case .action: return "arrow.clockwise"
-        }
-    }
-
-    var isContentTab: Bool {
-        switch self {
-        case .timeline, .settings: return true
-        case .action: return false
-        }
-    }
-}
-
-enum TimelineRadialAction: CaseIterable, Equatable {
-    case settings
-    case refreshLiveActivity
-
-    var icon: String {
-        switch self {
-        case .settings: return "gearshape.fill"
-        case .refreshLiveActivity: return "arrow.clockwise"
-        }
-    }
-
-    var offset: CGSize {
-        switch self {
-        case .settings: return CGSize(width: -92, height: -56)
-        case .refreshLiveActivity: return CGSize(width: 0, height: -110)
         }
     }
 }

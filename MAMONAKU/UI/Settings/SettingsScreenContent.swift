@@ -1,99 +1,43 @@
 import SwiftUI
 
-/// 設定画面のレイアウト本体。ViewState と Delegate を受け取り UI 描画に専念する。
+/// 設定画面のレイアウト本体。ViewState を描画し、操作を Delegate へ通知する。
 struct SettingsScreenContent: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.appTheme) private var theme
 
     let state: SettingsViewState
-    @ObservedObject var viewModel: SettingsViewModel
-    let delegate: SettingsDelegate?
+    weak var delegate: SettingsDelegate?
 
     var body: some View {
-        let primary = AppColors.textPrimary(palette: themeManager.theme, environmentScheme: colorScheme)
-        let secondary = AppColors.textSecondary(palette: themeManager.theme, environmentScheme: colorScheme)
-        let accent = AppColors.accent(palette: themeManager.theme, environmentScheme: colorScheme)
-        let background = AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme)
-        let listBackground = AppColors.settingsListBackground(palette: themeManager.theme, environmentScheme: colorScheme)
-
         List {
-            AccountSectionView(
-                primary: primary,
-                secondary: secondary,
-                listBackground: listBackground,
+            SettingsAccountSection(
                 subscriptionStatusText: state.subscriptionStatusText,
-                onTapSubscription: {
-                    delegate?.settingsOpenSubscriptionSheet()
-                }
+                onTapSubscription: { delegate?.settingsDidTapSubscription() }
             )
 
-            CalendarSectionView(
-                primary: primary,
-                secondary: secondary,
-                listBackground: listBackground,
-                isCalendarSyncToggleEnabled: state.isCalendarSyncToggleEnabled,
-                calendarSyncEnabled: viewModel.calendarSyncEnabledBinding,
-                onTapLocked: {
-                    delegate?.settingsOpenSubscriptionSheet()
-                }
+            SettingsCalendarSection(
+                isSubscribed: state.isSubscribed,
+                isCalendarSyncEnabled: state.isCalendarSyncEnabled,
+                onToggleCalendarSync: { delegate?.settingsDidToggleCalendarSync($0) },
+                onTapLocked: { delegate?.settingsDidTapLockedFeature() }
             )
 
-            AppSectionView(
-                primary: primary,
-                secondary: secondary,
-                accent: accent,
-                listBackground: listBackground,
-                theme: themeManager.theme,
-                availableThemes: state.availableThemes,
-                canSelectTheme: { delegate?.settingsCanSelectTheme($0) ?? false },
-                onSelectTheme: { theme in
-                    delegate?.settingsSelectTheme(theme)
-                },
-                notificationPermission: viewModel.notificationPermissionBinding,
-                startNotificationEnabled: viewModel.startNotificationEnabledBinding,
-                liveActivityEnabled: viewModel.liveActivityEnabledBinding,
-                isBufferSettingEnabled: state.isBufferSettingEnabled,
-                multipleLiveActivityEnabled: viewModel.multipleLiveActivityEnabledBinding,
-                bufferNotificationEnabled: viewModel.bufferNotificationEnabledBinding,
-                isBufferMinutesVisible: state.isBufferMinutesVisible,
-                bufferMinutesText: "\(state.globalBufferMinutes)分前",
-                onIncrementBufferMinutes: {
-                    delegate?.settingsIncrementBufferMinutes()
-                },
-                onDecrementBufferMinutes: {
-                    delegate?.settingsDecrementBufferMinutes()
-                },
-                onTapLocked: {
-                    delegate?.settingsOpenSubscriptionSheet()
-                },
-                onTapFeedback: {
-                    delegate?.settingsOpenMailFeedback()
-                },
-                onTapTerms: {
-                    delegate?.settingsOpenTerms()
-                },
-                onTapPrivacy: {
-                    delegate?.settingsOpenPrivacyPolicy()
-                }
-            )
+            SettingsAppSection(state: state, delegate: delegate)
 
             #if DEBUG
-            DebugSettingsSectionView(
-                primary: primary,
-                secondary: secondary,
-                listBackground: listBackground,
-                debugOverrideSubscribed: viewModel.debugOverrideSubscribedBinding
+            SettingsDebugSection(
+                isSubscriptionOverridden: state.isDebugSubscriptionOverridden,
+                onToggleSubscriptionOverride: { delegate?.settingsDidToggleDebugSubscription($0) }
             )
             #endif
         }
         .scrollContentBackground(.hidden)
-        .background(background)
+        .background(theme.background)
         .navigationTitle("設定")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Text("設定")
-                    .foregroundStyle(primary)
+                    .foregroundStyle(theme.textPrimary)
                     .font(.headline)
             }
         }
@@ -103,51 +47,48 @@ struct SettingsScreenContent: View {
 // MARK: - Previews / Mock
 
 final class PreviewSettingsDelegate: SettingsDelegate {
-    func settingsDidAppear(subscriptionManager: SubscriptionManager) {}
-    func settingsOpenSubscriptionSheet() {}
-    func settingsSelectTheme(_ theme: AppPalette) {}
-    func settingsCanSelectTheme(_ theme: AppPalette) -> Bool { theme.isFreeTheme }
-    func settingsIncrementBufferMinutes() {}
-    func settingsDecrementBufferMinutes() {}
-    func settingsOpenMailFeedback() {}
-    func settingsOpenTerms() {}
-    func settingsOpenPrivacyPolicy() {}
+    /// delegate は weak で保持されるため、Preview では生成済みのインスタンスを渡す
+    static let shared = PreviewSettingsDelegate()
+
+    func settingsDidTapSubscription() {}
+    func settingsDidTapLockedFeature() {}
+    func settingsDidSelectTheme(_ theme: AppPalette) {}
+    func settingsDidToggleCalendarSync(_ isOn: Bool) {}
+    func settingsDidToggleNotificationPermission(_ isOn: Bool) {}
+    func settingsDidToggleStartNotification(_ isOn: Bool) {}
+    func settingsDidToggleLiveActivity(_ isOn: Bool) {}
+    func settingsDidToggleLiveActivityStack(_ isOn: Bool) {}
+    func settingsDidToggleBufferNotification(_ isOn: Bool) {}
+    func settingsDidIncrementBufferMinutes() {}
+    func settingsDidDecrementBufferMinutes() {}
+    func settingsDidTapFeedback() {}
+    func settingsDidTapTerms() {}
+    func settingsDidTapPrivacyPolicy() {}
+    func settingsDidToggleDebugSubscription(_ isOn: Bool) {}
 }
 
-#Preview("設定画面") {
+#Preview("未加入") {
+    NavigationStack {
+        SettingsScreenContent(
+            state: SettingsViewState(isNotificationPermissionGranted: true),
+            delegate: PreviewSettingsDelegate.shared
+        )
+    }
+}
+
+#Preview("PLUS 加入中（ダーク）") {
     NavigationStack {
         SettingsScreenContent(
             state: SettingsViewState(
-                showSubscriptionSheet: false,
-                subscriptionStatusText: "未登録",
-                effectiveIsSubscribed: false,
-                isCalendarSyncToggleEnabled: false,
-                calendarSyncEnabled: false,
-                isThemeSettingEnabled: true,
-                availableThemes: AppPalette.visibleInSettings,
-                notificationPermissionEnabled: true,
-                startNotificationEnabled: true,
-                liveActivityEnabled: true,
-                multipleLiveActivityEnabled: false,
-                bufferNotificationEnabled: false,
-                globalBufferMinutes: 10,
-                isBufferSettingEnabled: false,
-                isBufferMinutesVisible: false
+                isSubscribed: true,
+                selectedTheme: .dark,
+                isCalendarSyncEnabled: true,
+                isNotificationPermissionGranted: true,
+                isBufferNotificationEnabled: true
             ),
-            viewModel: SettingsViewModel(timelineRepository: PreviewTimelineRepository()),
-            delegate: PreviewSettingsDelegate()
+            delegate: PreviewSettingsDelegate.shared
         )
     }
-    .environmentObject(ThemeManager())
-}
-
-private final class PreviewTimelineRepository: TimelineRepositoryProtocol {
-    func fetchItems() -> [TimelineItem] { [] }
-    func saveItems(_ items: [TimelineItem]) {}
-    func addItem(_ item: TimelineItem) {}
-    func updateItem(_ item: TimelineItem) {}
-    func deleteItem(id: UUID) {}
-    func fetchNextItemSummary(referenceDate: Date) -> TimelineNextItemSummary? { nil }
-    func deleteItemAndEvent(id: UUID) {}
-    func setCalendarSyncEnabled(_ enabled: Bool) {}
+    .environment(\.appTheme, .dark)
+    .preferredColorScheme(.dark)
 }

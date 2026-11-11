@@ -9,26 +9,6 @@ import ActivityKit
 import WidgetKit
 import SwiftUI
 
-struct MAMONAKULiveActivityAttributes: ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
-        var schedule: [ActivityTaskItem]
-    }
-
-    var name: String
-}
-
-struct ActivityTaskItem: Codable, Hashable {
-    var nextTitle: String
-    var nextStartDate: Date?
-    /// プライマリスロットのカウントダウン終了時刻
-    var nextEndDate: Date?
-    /// カウントダウンの開始時刻（Live Activity 側ではこの固定レンジを使って更新させる）
-    var countdownStartDate: Date?
-    /// スタックスロットの相対時間、またはフォールバック表示用
-    var remainingTimeShort: String
-    var bufferMinutes: Int?
-}
-
 struct MAMONAKULiveActivityLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: MAMONAKULiveActivityAttributes.self) { context in
@@ -194,36 +174,6 @@ private struct PrimaryCountdownView: View {
         .lineLimit(1)
         .minimumScaleFactor(0.65)
         .frame(width: fontSize <= 12 ? Self.compactWidth : nil, alignment: .trailing)
-    }
-}
-
-private struct CompactCountdownView: View {
-    let countdownStartDate: Date?
-    let targetDate: Date?
-    let fallbackText: String
-
-    private static let font = Font.system(size: 10, weight: .medium, design: .monospaced)
-    private static let fixedWidth: CGFloat = 32
-
-    var body: some View {
-        Group {
-            if let targetDate {
-                CountdownText(
-                    startDate: countdownStartDate,
-                    targetDate: targetDate
-                )
-                .id(targetDate.timeIntervalSinceReferenceDate)
-                .font(Self.font)
-                .monospacedDigit()
-            } else {
-                Text(fallbackText.isEmpty ? "--:--" : fallbackText)
-                    .font(Self.font)
-                    .monospacedDigit()
-            }
-        }
-        .lineLimit(1)
-        .minimumScaleFactor(0.65)
-        .frame(width: Self.fixedWidth, alignment: .trailing)
     }
 }
 

@@ -1,55 +1,36 @@
 import SwiftUI
 
+/// 現在時刻を示す横線と時刻ラベル。時間の経過に合わせて位置が動く。
 struct TimelineCurrentTimeLineView: View {
+    @Environment(\.appTheme) private var theme
     let width: CGFloat
-    let yOffset: (Int) -> CGFloat
-    let minutesSinceMidnight: (Date) -> Int
-    let currentTimeText: (Date) -> String
-    let accent: Color
-    let insideText: Color
+    let layout: TimelineLayout
 
     var body: some View {
         TimelineView(.animation) { context in
-            let minutes = minutesSinceMidnight(context.date)
-            let y = yOffset(minutes)
+            let minutes = DayTime.minutesSinceMidnight(of: context.date)
 
             ZStack(alignment: .leading) {
                 Rectangle()
-                    .fill(accent)
+                    .fill(theme.strongAccent)
                     .frame(width: width, height: 2)
                     .offset(y: -10)
-                Text(currentTimeText(context.date))
+                Text(DayTime.clockText(minutes: minutes))
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(insideText)
+                    .foregroundColor(theme.onStrongAccent)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(accent)
+                    .background(theme.strongAccent)
                     .cornerRadius(4)
                     .offset(x: 4, y: -20)
             }
-            .offset(y: y)
+            .offset(y: layout.yOffset(forMinutes: minutes))
         }
     }
 }
 
 #Preview("TimelineCurrentTimeLineView") {
-    TimelineCurrentTimeLineView(
-        width: 240,
-        yOffset: { minutes in CGFloat(minutes) / 60 * 80 },
-        minutesSinceMidnight: { date in
-            let cal = Calendar.current
-            let comps = cal.dateComponents([.hour, .minute], from: date)
-            return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
-        },
-        currentTimeText: { date in
-            let cal = Calendar.current
-            let comps = cal.dateComponents([.hour, .minute], from: date)
-            return String(format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
-        },
-        accent: .blue,
-        insideText: .white
-    )
-    .frame(height: 80 * 3)
-    .padding()
+    TimelineCurrentTimeLineView(width: 240, layout: TimelineLayout())
+        .frame(height: TimelineLayout().dayHeight, alignment: .top)
+        .padding()
 }
-

@@ -1,94 +1,71 @@
-import SwiftUI
-import Combine
 import StoreKit
+import SwiftUI
 
+/// アプリのルート画面。タブシェルを表示し、アプリ全体に関わる案内（PLUS の紹介・レビュー依頼）を出す。
 struct ContentView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appTheme) private var theme
     @Environment(\.requestReview) private var requestReview
-    @StateObject private var viewModel = ContentViewModel()
+
+    @State private var viewModel: ContentViewModel
+    private let timelineViewModel: TimelineViewModel
+    private let settingsViewModel: SettingsViewModel
+
+    init(
+        viewModel: ContentViewModel,
+        timelineViewModel: TimelineViewModel,
+        settingsViewModel: SettingsViewModel
+    ) {
+        _viewModel = State(initialValue: viewModel)
+        self.timelineViewModel = timelineViewModel
+        self.settingsViewModel = settingsViewModel
+    }
 
     var body: some View {
-        let state = viewModel.state
-        VStack(spacing: 0) {
-            MainTabView()
-                .background(AppColors.background(palette: themeManager.theme, environmentScheme: colorScheme))
-        }
-        .preferredColorScheme(themeManager.theme.preferredColorScheme)
-        .onAppear {
-            viewModel.onAppear(
-                isSubscribed: subscriptionManager.effectiveIsSubscribed,
-                isCurrentThemeFree: themeManager.theme.isFreeTheme,
-                applyThemeSystem: { themeManager.theme = .system }
-            )
-        }
-        .onChange(of: subscriptionManager.effectiveIsSubscribed) { _, isSubscribed in
-            viewModel.onSubscriptionChanged(
-                isSubscribed: isSubscribed,
-                isCurrentThemeFree: themeManager.theme.isFreeTheme,
-                applyThemeSystem: { themeManager.theme = .system }
-            )
-        }
-        .sheet(isPresented: Binding(get: { state.isSubscriptionPromptPresented }, set: { _ in viewModel.dismissSubscriptionPrompt() })) {
-            SubscriptionSheetView()
-                .environmentObject(subscriptionManager)
-                .environmentObject(themeManager)
-        }
-        .alert("MAMONAKUに満足していますか？", isPresented: Binding(get: { state.isReviewSatisfactionAlertPresented }, set: { _ in viewModel.dismissReviewSatisfactionAlert() })) {
-            Button("まだ", role: .cancel) {
+        MainTabView(timelineViewModel: timelineViewModel, settingsViewModel: settingsViewModel)
+            .background(theme.background)
+            .preferredColorScheme(themeManager.theme.preferredColorScheme)
+            .onAppear {
+                let isSubscribed = subscriptionManager.effectiveIsSubscribed
+                themeManager.revertToFreeThemeIfNeeded(isSubscribed: isSubscribed)
+                viewModel.onAppear(isSubscribed: isSubscribed)
             }
-            Button("満足している") {
-                viewModel.userDidTapSatisfied()
+            .onChange(of: subscriptionManager.effectiveIsSubscribed) { _, isSubscribed in
+                themeManager.revertToFreeThemeIfNeeded(isSubscribed: isSubscribed)
             }
-        } message: {
-            Text("よろしければレビューで応援してください。")
-        }
-        .onChange(of: viewModel.route) { _, route in
-            guard let route else { return }
-            switch route {
-            case .requestReview:
-                requestReview()
+            .sheet(isPresented: subscriptionPromptPresented) {
+                SubscriptionSheetView()
             }
-            viewModel.handleRouteConsumed()
-        }
-    }
-}
-
-#Preview {
-    ContentView()
-        .environmentObject(SubscriptionManager())
-        .environmentObject(ThemeManager())
-}
-
-class FontInfo: ObservableObject {
-    @Published var fontNames: Array<String> = []
-    
-    init() {
-        UIFont.familyNames.forEach {
-            UIFont.fontNames(forFamilyName: $0).forEach {
-                fontNames.append($0)
-            }
-        }
-    }
-}
-
-struct FontView: View {
-    @ObservedObject private var fontInfo = FontInfo()
-
-    var body: some View {
-        VStack {
-            Text("フォント数:\(fontInfo.fontNames.count)")
-            List {
-                ForEach (0 ..< fontInfo.fontNames.count) {
-                    Text("\(fontInfo.fontNames[$0])0123:")
-                        .font(.custom(fontInfo.fontNames[$0], size: 16.0))
+            .alert("MAMONAKUに満足していますか？", isPresented: reviewSatisfactionAlertPresented) {
+                Button("まだ", role: .cancel) {}
+                Button("満足している") {
+                    viewModel.userDidTapSatisfied()
                 }
+            } message: {
+                Text("よろしければレビューで応援してください。")
             }
-        }
+            .onChange(of: viewModel.route) { _, route in
+                guard let route else { return }
+                switch route {
+                case .requestReview:
+                    requestReview()
+                }
+                viewModel.handleRouteConsumed()
+            }
     }
-}
 
-#Preview {
-    FontView()
+    private var subscriptionPromptPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.state.isSubscriptionPromptPresented },
+            set: { _ in viewModel.dismissSubscriptionPrompt() }
+        )
+    }
+
+    private var reviewSatisfactionAlertPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.state.isReviewSatisfactionAlertPresented },
+            set: { _ in viewModel.dismissReviewSatisfactionAlert() }
+        )
+    }
 }
